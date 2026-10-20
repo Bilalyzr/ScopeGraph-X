@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { BackLink } from "@/components/BackLink";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -117,6 +118,7 @@ export default function LoginPage() {
 
         {/* Right Column: Authentication Card */}
         <form className="login-card card" style={{ marginBottom: 0 }} onSubmit={submit}>
+          <BackLink href="/" label="Back to start" />
           <div className="pulse-strip" style={{ marginBottom: "1.1rem" }}>
             <span className="pulse-strip-label">
               <span className="signal-dot" />
