@@ -2,7 +2,7 @@
   "name": "scopegraph-x",
   "version": "0.2.0",
   "private": true,
-  "description": "ScopeGraph X — enterprise scope-controlled vulnerability discovery & security research platform (authorized testing only)",
+  "description": "ScopeGraph X \u2014 enterprise scope-controlled vulnerability discovery & security research platform (authorized testing only)",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -14,7 +14,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "worker": "tsx scripts/worker.ts"
+    "worker": "tsx scripts/worker.ts",
+    "rotate-key": "tsx scripts/rotate-key.ts",
+    "a11y": "tsx scripts/a11y-audit.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

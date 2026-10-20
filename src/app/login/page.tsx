@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
@@ -11,6 +11,11 @@ export default function LoginPage() {
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/oidc/status").then((r) => r.json()).then((d) => setSsoEnabled(Boolean(d.enabled))).catch(() => {});
+  }, []);
 
   async function completeLogin(body: { user: { id: string }; active_org_id: string | null }) {
     router.push(body.active_org_id ? "/dashboard" : "/onboarding");
@@ -195,6 +200,18 @@ export default function LoginPage() {
           <button className="btn primary" style={{ width: "100%", justifyContent: "center", marginTop: "0.4rem" }} disabled={busy}>
             {busy ? "VERIFYING…" : challengeToken ? "VERIFY TOTP CODE →" : "AUTHENTICATE SESSION →"}
           </button>
+
+          {ssoEnabled && !challengeToken && (
+            <>
+              <div className="row" style={{ margin: "0.9rem 0 0.6rem", fontSize: "0.72rem", color: "var(--text-faint)", justifyContent: "center", gap: "0.7rem" }}>
+                <span aria-hidden="true" style={{ flex: 1, borderTop: "1px solid var(--border)" }} /> OR CONTINUE WITH
+                <span aria-hidden="true" style={{ flex: 1, borderTop: "1px solid var(--border)" }} />
+              </div>
+              <a className="btn" style={{ width: "100%", justifyContent: "center" }} href="/api/auth/oidc/login">
+                Sign in with SSO (OIDC)
+              </a>
+            </>
+          )}
 
           <p className="hint" style={{ marginTop: "1.2rem" }}>
             Authorized security testing only. All active operations require an approved scope policy version and verified asset ownership.

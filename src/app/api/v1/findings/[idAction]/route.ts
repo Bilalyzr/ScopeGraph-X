@@ -15,7 +15,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ idA
     const body = await req.json().catch(() => ({}));
 
     if (action === "review") {
-      const ctx = await requireContext(req, "finding:review");
+      // Per-status authority lives in the lifecycle role table (transitionFinding):
+      // e.g. RESEARCHER may mark OBSERVED and PROGRAM_OWNER may ACCEPT/CLOSE even
+      // though neither holds the broad `finding:review` permission.
+      const ctx = await requireContext(req, "finding:read");
       requestId = ctx.requestId;
       const parsed = z.object({ to: z.enum(FINDING_STATUSES), reason: z.string().default("") }).safeParse(body);
       if (!parsed.success) throw new ApiError(422, "VALIDATION_ERROR", "`to` must be a valid finding status");

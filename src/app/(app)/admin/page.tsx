@@ -5,6 +5,7 @@ import { roleHas } from "@/lib/rbac";
 import { verifyAuditChain } from "@/lib/audit";
 import { ApiAction } from "@/components/ApiAction";
 import { WebhooksPanel } from "./WebhooksPanel";
+import { TicketingPanel } from "./TicketingPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -161,6 +162,7 @@ export default async function AdminPage() {
       </div>
 
       <WebhooksPanel />
+      <TicketingPanel />
 
       <div className="section-label">
         <span className="section-label-num">03</span>

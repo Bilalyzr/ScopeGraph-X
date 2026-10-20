@@ -26,6 +26,7 @@ model User {
   email        String   @unique
   name         String
   passwordHash String
+  oidcSubject  String?  @unique // external IdP subject when provisioned via SSO
   createdAt    DateTime @default(now())
 }
 
@@ -148,6 +149,8 @@ model Campaign {
 model Job {
   id             String    @id
   campaignId     String
+  leaseOwner     String?
+  leaseUntil     DateTime?
   kind           String // passive-discovery | active-probe | scanner-import | ai-hypothesis | report
   idempotencyKey String
   status         String    @default("QUEUED") // QUEUED | RUNNING | SUCCEEDED | FAILED | CANCELLED
@@ -519,4 +522,28 @@ model MfaChallenge {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+// --- v0.3 additions: worker leases, ticketing sync, OIDC ---
+
+model TicketLink {
+  id            String    @id
+  orgId         String
+  findingId     String
+  system        String    @default("jira")
+  issueKey      String
+  issueUrl      String    @default("")
+  createdAt     DateTime  @default(now())
+  lastSyncedAt  DateTime?
+
+  @@unique([findingId, system])
+  @@index([orgId])
+}
+
+model OidcState {
+  id         String   @id // sha256 of state token
+  nonce      String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
 }

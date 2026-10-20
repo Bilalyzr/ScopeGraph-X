@@ -7,7 +7,7 @@
  * The web app remains fully functional without it (inline drain on :start);
  * this process is the production-shape "isolated worker pool" (single node).
  */
-import { drainQueue } from "../src/lib/jobs/runner";
+import { drainQueue, recoverStaleLeases } from "../src/lib/jobs/runner";
 import { processWebhookDeliveries } from "../src/lib/webhooks";
 import { sweepExpiredEvidence } from "../src/lib/evidence/store";
 import { db } from "../src/lib/db";
@@ -20,7 +20,7 @@ let running = true;
 async function processJobs() {
   while (running) {
     try {
-      const { ran } = await drainQueue(20);
+      const { ran } = await drainQueue(20); // lease-aware claiming; multi-node safe
       if (ran === 0) break; // queue empty this cycle
     } catch (e) {
       console.error("[worker] job drain error:", e);
@@ -50,7 +50,9 @@ async function maintenance() {
 }
 
 async function main() {
-  console.log("[worker] ScopeGraph X worker started (jobs + webhooks + retention)");
+  console.log(`[worker] ScopeGraph X worker ${process.env.SGX_WORKER_ID ?? "(auto-id)"} started (jobs + webhooks + retention)`);
+  const stale = await recoverStaleLeases();
+  if (stale > 0) console.log(`[worker] recovered ${stale} stale lease(s) from previous workers`);
   const jobTimer = setInterval(async () => {
     await processJobs();
     await processWebhooks();

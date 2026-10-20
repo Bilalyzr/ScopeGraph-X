@@ -4,6 +4,7 @@ import { newId } from "@/lib/ids";
 import { audit } from "@/lib/audit";
 import { ApiError } from "@/lib/api";
 import { dispatchWebhookEvent } from "@/lib/webhooks";
+import { syncFindingToTicket, ticketingMode } from "@/lib/ticketing";
 import type { Role } from "@/lib/rbac";
 
 // Finding lifecycle (FR-FND-01): permission-checked, immutable event-audited
@@ -200,6 +201,15 @@ export async function transitionFinding(params: {
     actor: params.actorId,
     reason: params.reason ?? "",
   });
+  // Ticketing sync: creating the tracker ticket when the finding is REPORTED.
+  // Failures never block the transition — the ticket can be retried later.
+  if (params.to === "REPORTED" && ticketingMode() !== "none") {
+    try {
+      await syncFindingToTicket({ ...finding, status: "REPORTED" });
+    } catch {
+      // recorded in audit by the ticketing module on failure paths
+    }
+  }
   return { ...finding, status: params.to };
 }
 

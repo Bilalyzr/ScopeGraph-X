@@ -29,9 +29,12 @@ The app listens on **port 3000** (or `PORT`). On machines running other services
 |---|---|
 | `npm run dev` / `npm run build` + `npm start` | Dev / production server |
 | `npm run worker` | Isolated worker process (jobs + webhook delivery + retention sweeps) |
-| `npm test` | Full test suite (102 tests: policy adversarial, tenancy, lifecycle, AI safety, crypto/TOTP, change detection, invariants, correlation, webhooks) |
+| `npm test` | Full test suite (**129 tests**: policy adversarial, tenancy, lifecycle, AI safety, crypto/TOTP, key rotation, worker leases, OIDC, ticketing, live adapters, scanner parsers, change detection, invariants, correlation, webhooks) |
 | `npm run typecheck` | TypeScript strict check |
 | `npm run db:reset` | Reset + reseed the dev database |
+| `npm run worker` | Multi-node-safe worker (lease claiming, webhooks, retention) — run several with distinct `SGX_WORKER_ID` |
+| `npm run rotate-key` | KMS-parity key rotation: re-seal all encrypted artifacts to a new key (needs `EVIDENCE_ENCRYPTION_KEY_PREVIOUS`) |
+| `npm run a11y` | Internal WCAG-oriented accessibility audit → `docs/a11y-report.md` |
 
 ## What is implemented (verified by tests)
 
@@ -52,6 +55,16 @@ The app listens on **port 3000** (or `PORT`). On machines running other services
 - [docs/requirements-traceability.md](docs/requirements-traceability.md) — PRD requirement → implementation → test
 - [docs/implementation-plan.md](docs/implementation-plan.md) — phased progress and next tasks
 - [docs/deployment.md](docs/deployment.md) — deployment and rollback guide
+
+## v0.3 — final gap closure
+
+- **Jira-style ticketing sync** — REPORTED findings create linked tickets (modes: `none` / `recorder` / `jira` Cloud REST), idempotent per finding.
+- **KMS-parity key rotation** — two-key window; `npm run rotate-key` re-seals evidence objects, webhook secrets and MFA secrets under the new key with integrity checks; refuses to run misconfigured.
+- **Multi-node worker pools** — atomic lease-based job claiming, heartbeats, stale-lease recovery, lease-guarded completion (tested with two simulated workers).
+- **Accessibility internal audit** — `npm run a11y` static audit + contrast math, report in docs (NOT a third-party WCAG certification — labeled as such).
+- **Real external adapters (opt-in, off by default)** — live passive DNS/CT/RDAP lookups for in-scope hosts (public records only, every query audited, never touches targets); real-format Nuclei-JSONL and OWASP-ZAP-JSON import parsers; OpenAI-compatible AI provider (schema-gated, local critic, fail-closed); OIDC SSO relying party (code flow, state/nonce, RS256/JWKS verification, JIT provisioning).
+
+**Active target egress remains SIMULATED by design** — probes/scans never leave the process; the only live network calls are the opt-in passive public-record lookups and operator-configured integrations above.
 
 ## Honest limitations (do not mistake for production GA)
 

@@ -1,9 +1,11 @@
 import { db } from "@/lib/db";
 import { newId } from "@/lib/ids";
 
-// Passive discovery adapter (FR-REC-01). The dev adapter deterministically
-// generates mock observations from a fixture set — clearly labeled DEMO data.
-// Real DNS/CT/RDAP adapters implement the same interface behind configuration.
+// Passive discovery adapter (FR-REC-01). The development adapter performs no
+// network lookups (EGRESS_MODE=simulated) and fabricates nothing: it observes
+// only what the program itself already declares � its existing assets and the
+// exact hosts named in its ACTIVE scope policy. Real DNS/CT/RDAP adapters
+// implement the same interface behind configuration.
 
 export interface PassiveObservation {
   source: "dns" | "ct" | "rdap" | "metadata" | "api-schema";
@@ -14,23 +16,42 @@ export interface PassiveObservation {
   note?: string;
 }
 
-/** Fixture corpus for the demo program targets (*.demo-target.test). */
-const FIXTURES: PassiveObservation[] = [
-  { source: "dns", locator: "shop.demo-target.test", assetType: "HOST", confidence: 0.95, payload: { record: "A", value: "203.0.113.10" } },
-  { source: "dns", locator: "api.demo-target.test", assetType: "HOST", confidence: 0.95, payload: { record: "A", value: "203.0.113.11" } },
-  { source: "dns", locator: "admin.demo-target.test", assetType: "HOST", confidence: 0.9, payload: { record: "A", value: "203.0.113.12" } },
-  { source: "ct", locator: "staging.demo-target.test", assetType: "HOST", confidence: 0.7, payload: { cert_issuer: "mock-ca", san: ["staging.demo-target.test"] }, note: "Certificate transparency hit — association only, NOT authorization" },
-  { source: "rdap", locator: "demo-target.test", assetType: "DOMAIN", confidence: 0.85, payload: { registrar: "mock-registrar", created: "2024-01-01" } },
-  { source: "api-schema", locator: "api.demo-target.test", assetType: "API", confidence: 0.9, payload: { openapi: "3.1", paths: ["/v1/orders", "/v1/users/{id}", "/v1/admin/export"] } },
-];
+export async function recordObservation(programId: string, _mode: string): Promise<PassiveObservation[]> {
+  void _mode;
+  const out: PassiveObservation[] = [];
+  const seen = new Set<string>();
 
-export async function recordObservation(programId: string, mode: string): Promise<PassiveObservation[]> {
-  // Deterministic pseudo-variation so repeated runs can show change detection.
-  const run = await db.assetObservation.count({ where: { asset: { programId } } });
-  const selected = FIXTURES.filter((_, i) => (i + run) % 3 !== 2 || run === 0);
-  return selected;
+  // 1. Re-observe assets the program already tracks (refreshes last-seen).
+  const assets = await db.asset.findMany({ where: { programId }, select: { canonicalLocator: true, assetType: true, confidence: true } });
+  for (const a of assets) {
+    if (!["HOST", "DOMAIN", "WEB_APP", "API"].includes(a.assetType)) continue;
+    seen.add(`${a.canonicalLocator}|${a.assetType}`);
+    out.push({
+      source: "metadata", locator: a.canonicalLocator, assetType: a.assetType as PassiveObservation["assetType"],
+      confidence: a.confidence, payload: { reobserved: true }, note: "Re-observed tracked asset",
+    });
+  }
+
+  // 2. Exact hosts named by the ACTIVE policy allow-list (wildcards are never expanded).
+  const active = await db.scopeVersion.findFirst({ where: { programId, status: "ACTIVE" }, orderBy: { version: "desc" } });
+  if (active) {
+    try {
+      const rules = JSON.parse(active.rulesJson) as { allow?: Array<{ host?: string }> };
+      for (const r of rules.allow ?? []) {
+        const host = (r.host ?? "").toLowerCase();
+        if (!host || host.includes("*") || seen.has(`${host}|HOST`)) continue;
+        seen.add(`${host}|HOST`);
+        out.push({
+          source: "metadata", locator: host, assetType: "HOST", confidence: 0.6,
+          payload: { scope_version: active.version }, note: "Named in active scope policy � association only, NOT authorization",
+        });
+      }
+    } catch {
+      /* malformed rules are rejected at proposal time; ignore defensively */
+    }
+  }
+  return out;
 }
-
 /** Upsert asset from an observation — assets start DISCOVERED (never AUTHORIZED). */
 export async function upsertAssetFromObservation(
   orgId: string,

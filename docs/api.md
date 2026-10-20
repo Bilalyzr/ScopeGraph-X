@@ -91,3 +91,13 @@ curl -b jar -X POST localhost:3000/api/v1/campaigns/cmp_…:start   # → 202 + 
 | `GET /v1/resources/{id}` / `POST /v1/resources/{id}:check` | `asset:read` / `test:propose` | Workflow-invariant engine run; violations create CANDIDATE findings with evidence |
 | `GET/POST/PATCH/DELETE /v1/webhooks` (+ `PUT` drain) | `org:admin` | Signed webhook endpoints (secret shown once); HMAC over `timestampMs.nonce.body`; recorded dev transport |
 | `GET /v1/audit-events/export` | `audit:read` | CSV export (the export itself is audited) |
+
+## v0.3 additions
+
+| Method & path | Notes |
+|---|---|
+| `GET /api/auth/oidc/status` | `{enabled}` — drives the SSO button visibility |
+| `GET /api/auth/oidc/login` | 302 to the IdP authorization endpoint (state+nonce); **503 OIDC_DISABLED** when unconfigured |
+| `GET /api/auth/oidc/callback` | token exchange + JWKS-verified ID token (iss/aud/exp/nonce) + JIT provisioning → session cookie |
+| `GET /v1/ticketing` | org:admin — ticketing mode + linked tickets |
+CLI: `npm run rotate-key` (dual-key re-sealing), `npm run a11y` (accessibility audit → docs/a11y-report.md), `npm run worker` (lease-based multi-node worker, `SGX_WORKER_ID`).

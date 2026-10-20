@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentPrincipal } from "@/lib/auth/session";
 import { roleHas, type Role } from "@/lib/rbac";
-import { canTransition, type FindingStatus } from "@/lib/findings/lifecycle";
+import { canTransition, roleCanSetStatus, type FindingStatus } from "@/lib/findings/lifecycle";
 import { FindingActions } from "./FindingActions";
 
 export const dynamic = "force-dynamic";
@@ -30,10 +30,14 @@ export default async function FindingDetailPage({ params }: { params: Promise<{ 
   );
   const asset = finding.assetId ? await db.asset.findFirst({ where: { id: finding.assetId, orgId: principal.orgId } }) : null;
   const program = await db.program.findFirst({ where: { id: finding.programId, orgId: principal.orgId } });
-  const allowedNext = (NEXT_STATES[finding.status as FindingStatus] ?? []).filter((s) => canTransition(finding.status as FindingStatus, s));
   const role = principal.role as Role;
-  const canReview = roleHas(role, "finding:review");
+  // Only offer transitions this role is actually permitted to make (lifecycle role table).
+  const allowedNext = (NEXT_STATES[finding.status as FindingStatus] ?? []).filter(
+    (s) => canTransition(finding.status as FindingStatus, s) && roleCanSetStatus(role, s)
+  );
+  const isTerminal = (NEXT_STATES[finding.status as FindingStatus] ?? []).length === 0;
   const isValidator = role === "VALIDATOR" || role === "APPSEC_LEAD" || role === "TENANT_ADMIN";
+  const canReview = allowedNext.length > 0 || (isValidator && roleHas(role, "finding:review"));
 
   return (
     <div>
@@ -149,14 +153,12 @@ export default async function FindingDetailPage({ params }: { params: Promise<{ 
         <div>
           <div className="card">
             <h2>Lifecycle actions</h2>
-            {canReview ? (
-              allowedNext.length > 0 ? (
-                <FindingActions findingId={finding.id} allowedNext={allowedNext} isValidator={isValidator} />
-              ) : (
-                <p className="empty">Terminal status — no further transitions.</p>
-              )
+            {isTerminal ? (
+              <p className="empty">Terminal status — no further transitions.</p>
+            ) : canReview ? (
+              <FindingActions findingId={finding.id} allowedNext={allowedNext} isValidator={isValidator} />
             ) : (
-              <p className="empty">Your role ({role}) cannot review findings.</p>
+              <p className="empty">Your role ({role}) has no permitted transitions from {finding.status}.</p>
             )}
           </div>
 

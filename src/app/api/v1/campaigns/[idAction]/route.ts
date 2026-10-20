@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { enqueueJob, drainQueue } from "@/lib/jobs/runner";
-import { activeScopeVersion } from "@/lib/policy/gateway";
+import { activeScopeVersion, emergencyStopActive } from "@/lib/policy/gateway";
 import { ApiError, handleApiError, requireContext, withRequestId } from "@/lib/api";
 
 // POST /v1/campaigns/{id}:start | :stop — 202 + durable job reference on start.
@@ -37,13 +37,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ idA
         throw new ApiError(409, "POLICY_STALE", "Campaign references an older policy version; recreate the campaign against the active version");
       }
 
+      // Safety gate: nothing may be scheduled while a tenant- or program-wide
+      // emergency stop is engaged (the gateway also re-checks at egress).
+      const stopReason = await emergencyStopActive(ctx.orgId, campaign.programId);
+      if (stopReason) throw new ApiError(409, "EMERGENCY_STOP_ACTIVE", stopReason);
+
       await db.campaign.update({ where: { id: campaign.id }, data: { state: "RUNNING", startedAt: new Date() } });
 
       // Enqueue passive discovery always; active probe jobs only in approved-active
       // mode AND only against AUTHORIZED assets (the gateway re-checks at egress).
       const jobs = [await enqueueJob({
         campaignId: campaign.id, kind: "passive-discovery",
-        idempotencyKey: "passive-1", request: { mode: "mock" },
+        idempotencyKey: "passive-1", request: { mode: "policy-derived" },
       })];
       if (campaign.mode === "PASSIVE_THEN_APPROVED_ACTIVE") {
         const authorized = await db.asset.findMany({

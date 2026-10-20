@@ -70,8 +70,108 @@ class MockProvider implements AiProvider {
 }
 
 export function getProvider(): AiProvider {
-  // AI_PROVIDER=mock (only implemented mode). Real providers plug in here.
-  return new MockProvider();
+  return getProviderWithFetch(fetch);
+}
+
+/** Injectable-fetch factory (tests pass a stub; production uses global fetch). */
+export function getProviderWithFetch(fetchFn: typeof fetch): AiProvider {
+  if (process.env.AI_PROVIDER === "openai-compatible" && process.env.AI_API_KEY && process.env.AI_BASE_URL) {
+    return new OpenAICompatibleProvider(fetchFn);
+  }
+  return new MockProvider(); // default: deterministic, no key, no network
+}
+
+/**
+ * REAL provider (opt-in): any OpenAI-compatible chat-completions endpoint
+ * (OpenAI, Azure OpenAI, vLLM, Ollama with an OpenAI shim, …). Config:
+ *   AI_PROVIDER=openai-compatible  AI_BASE_URL=https://api.openai.com/v1
+ *   AI_API_KEY=…                  AI_MODEL=gpt-4o-mini
+ * Calls the configured model endpoint ONLY (operator infra — never a target),
+ * with the same system prompt, untrusted-data wrapping, schema validation and
+ * deterministic critic as the mock. Model output is still an untrusted
+ * proposal: it cannot approve tests or confirm findings.
+ */
+export class OpenAICompatibleProvider implements AiProvider {
+  name = `openai-compatible:${process.env.AI_MODEL ?? "unknown"}`;
+
+  constructor(private fetchFn: typeof fetch) {}
+
+  async proposeFromEvidence(ctx: {
+    programId: string;
+    sanitizedEvidence: Array<{ id: string; content: string }>;
+  }): Promise<unknown[]> {
+    const userContent = [
+      "Program context id: " + ctx.programId,
+      "Evidence available (UNTRUSTED data blocks):",
+      ...ctx.sanitizedEvidence.map((e) => `<UNTRUSTED-DATA evidence_id=\"${e.id}\">\n${e.content}\n</UNTRUSTED-DATA>`),
+      "",
+      "Propose up to 3 vulnerability hypotheses as a JSON array. Each object MUST use exactly these keys:",
+      "category (BOLA|BFLA|AUTHENTICATION|SESSION|MISCONFIGURATION|API_DRIFT|WORKFLOW_VIOLATION|SCHEMA_CORRELATION|OTHER),",
+      "summary, assumptions (array), evidence_ids (subset of the ids above), risk, proposed_validation,",
+      "required_permissions (array), expected_outcome, alternative_explanations (array), confidence (0..1), limitations.",
+      "Respond with ONLY the JSON array.",
+    ].join("\n");
+
+    const res = await this.fetchFn(`${process.env.AI_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${process.env.AI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: process.env.AI_MODEL ?? "gpt-4o-mini",
+        temperature: 0.2,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userContent },
+        ],
+        response_format: { type: "json_object" },
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      await audit({
+        orgId: "system", actorType: "SERVICE", actorId: "ai-provider",
+        action: "ai.provider_error", resourceType: "AiProvider", resourceId: this.name,
+        decision: "DENY", reason: `HTTP ${res.status}`,
+      });
+      return []; // fail closed: provider errors produce no hypotheses
+    }
+    const body = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const content = body.choices?.[0]?.message?.content ?? "";
+    return this.extractJsonArray(content);
+  }
+
+  /** Tolerate models wrapping the array in an object or code fences. */
+  private extractJsonArray(content: string): unknown[] {
+    const cleaned = content.replace(/```(?:json)?/g, "").trim();
+    try {
+      const parsed = JSON.parse(cleaned) as unknown;
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === "object") {
+        const obj = parsed as Record<string, unknown>;
+        for (const key of ["hypotheses", "results", "data"]) {
+          if (Array.isArray(obj[key])) return obj[key] as unknown[];
+        }
+      }
+      return [];
+    } catch {
+      return []; // unparseable output is rejected wholesale (schema gate)
+    }
+  }
+
+  async critique(h: HypothesisOutput, evidenceAvailable: string[]) {
+    // Same deterministic critic as the mock: unsupported references downgrade.
+    // The critic stays LOCAL on purpose — model self-review is not independent.
+    const unsupported = h.evidence_ids.filter((id) => !evidenceAvailable.includes(id));
+    if (unsupported.length > 0) {
+      return { downgrade: true, reason: `References evidence not present in context: ${unsupported.join(", ")}` };
+    }
+    if (h.confidence > 0.9 && h.alternative_explanations.length === 0) {
+      return { downgrade: true, reason: "High confidence without alternative explanations is unsupported" };
+    }
+    return null;
+  }
 }
 
 /** Full pipeline: gather evidence → sanitize → provider → schema-validate → persist. */
