@@ -16,6 +16,8 @@ const REMEMBERED_EMAIL_KEY = "sgx-last-email";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mfaCode, setMfaCode] = useState("");
@@ -76,10 +78,37 @@ export default function LoginPage() {
     }
   }
 
+  function switchMode(next: "signin" | "signup") {
+    setMode(next);
+    setError(null);
+    setChallengeToken(null);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (challengeToken) {
       await verifyCode(mfaCode.replace(/\D/g, ""), challengeToken);
+      return;
+    }
+    if (mode === "signup") {
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: name.trim(), email: email.trim(), password }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(body.detail || body.title || "Registration failed");
+          return;
+        }
+        router.push(body.next || "/onboarding");
+        router.refresh();
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     setBusy(true);
@@ -167,7 +196,7 @@ export default function LoginPage() {
           <div className="pulse-strip" style={{ marginBottom: "1.1rem" }}>
             <span className="pulse-strip-label">
               <span className="signal-dot" />
-              {challengeToken ? "STEP 02 // TOTP CHALLENGE" : "STEP 01 // OPERATOR AUTH"}
+              {challengeToken ? "STEP 02 // TOTP CHALLENGE" : mode === "signup" ? "NEW OPERATOR // REGISTRATION" : "STEP 01 // OPERATOR AUTH"}
             </span>
             <svg className="ecg-svg" width="84" height="20" viewBox="0 0 88 22" aria-hidden="true">
               <polyline
@@ -178,11 +207,29 @@ export default function LoginPage() {
           </div>
 
           <h2 style={{ fontSize: "1.25rem", margin: "0 0 1.1rem" }}>
-            {challengeToken ? "Enter your authenticator code" : "Sign in to the security workbench"}
+            {challengeToken ? "Enter your authenticator code" : mode === "signup" ? "Create your operator account" : "Sign in to the security workbench"}
           </h2>
 
           {!challengeToken ? (
             <>
+              {mode === "signup" && (
+                <label className="field" htmlFor="login-name">
+                  Full name
+                  <input
+                    id="login-name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    minLength={2}
+                    autoComplete="name"
+                    placeholder="Alex Operator"
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={errorId}
+                    disabled={busy}
+                  />
+                </label>
+              )}
               <label className="field" htmlFor="login-email">
                 Operator Email
                 <input
@@ -193,7 +240,7 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   autoComplete="username"
-                  placeholder="operator@organization.com"
+                  placeholder={mode === "signup" ? "you@organization.com" : "operator@organization.com"}
                   aria-invalid={Boolean(error)}
                   aria-describedby={errorId}
                   disabled={busy}
@@ -234,6 +281,7 @@ export default function LoginPage() {
                 </p>
               )}
 
+              {mode === "signin" && (
               <div className="login-demo-row" aria-label="Demo accounts">
                 <span className="login-demo-label">DEMO ACCESS</span>
                 {DEMO_ACCOUNTS.map((a) => (
@@ -253,6 +301,7 @@ export default function LoginPage() {
                   </button>
                 ))}
               </div>
+            )}
             </>
           ) : (
             <>
@@ -312,12 +361,14 @@ export default function LoginPage() {
               </>
             ) : challengeToken ? (
               "VERIFY TOTP CODE →"
+            ) : mode === "signup" ? (
+              "CREATE OPERATOR ACCOUNT →"
             ) : (
               "AUTHENTICATE SESSION →"
             )}
           </button>
 
-          {ssoEnabled && !challengeToken && (
+          {ssoEnabled && !challengeToken && mode === "signin" && (
             <>
               <div className="row" style={{ margin: "0.9rem 0 0.6rem", fontSize: "0.72rem", color: "var(--text-faint)", justifyContent: "center", gap: "0.7rem" }}>
                 <span aria-hidden="true" style={{ flex: 1, borderTop: "1px solid var(--border)" }} /> OR CONTINUE WITH
@@ -329,7 +380,32 @@ export default function LoginPage() {
             </>
           )}
 
-          <p className="hint" style={{ marginTop: "1.2rem" }}>
+          {mode === "signup" && (
+            <p className="hint" style={{ marginTop: "0.8rem" }}>
+              Password policy: 10+ characters with at least one letter and one digit. You will create or join an
+              organization next.
+            </p>
+          )}
+
+          <div className="row" style={{ marginTop: "1rem", justifyContent: "center", gap: "0.4rem", fontSize: "0.82rem" }}>
+            {mode === "signin" ? (
+              <>
+                <span className="faint">New to ScopeGraph X?</span>
+                <button type="button" className="login-mode-link" onClick={() => switchMode("signup")}>
+                  Create an operator account
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="faint">Already registered?</span>
+                <button type="button" className="login-mode-link" onClick={() => switchMode("signin")}>
+                  Sign in instead
+                </button>
+              </>
+            )}
+          </div>
+
+          <p className="hint" style={{ marginTop: "1rem" }}>
             Authorized security testing only. All active operations require an approved scope policy version and verified asset ownership.
           </p>
         </form>

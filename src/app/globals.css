@@ -1755,3 +1755,10 @@ code.inline {
 @media (prefers-reduced-motion: reduce) {
   .login-spinner, .login-error-shake { animation: none; }
 }
+
+.login-mode-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font: inherit; font-weight: 600; color: var(--accent, #22d3ee);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.login-mode-link:hover { filter: brightness(1.15); }
