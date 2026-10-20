@@ -1762,3 +1762,41 @@ code.inline {
   text-decoration: underline; text-underline-offset: 3px;
 }
 .login-mode-link:hover { filter: brightness(1.15); }
+
+/* ==========================================================================
+   Responsive hardening (mobile)
+   ========================================================================== */
+/* Long unbreakable strings (IDs, hosts, digests) must never blow out grids */
+.kv dd,
+.dx-kv .k,
+.dx-kv .v,
+.dx-row-t,
+.dx-row-d,
+td.mono,
+.dx-plate-sub,
+.terminal-panel > div > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Phones: wide tables scroll inside their card instead of squashing */
+@media (max-width: 720px) {
+  table.data {
+    min-width: 640px;
+  }
+  /* De-clutter the top bar: keep org picker + emergency stop, hide the email */
+  .topbar > .row:last-child .faint {
+    display: none;
+  }
+  .topbar {
+    gap: 0.45rem;
+  }
+  /* Budget triple-input rows shrink instead of overflowing */
+  .field .row input[type="number"] {
+    min-width: 0;
+  }
+  .login-mfa-input {
+    letter-spacing: 0.35em;
+    font-size: 1.25rem !important;
+  }
+}

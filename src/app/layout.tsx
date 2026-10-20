@@ -18,7 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem('sgx-signal-theme');if(t==='paper'||t==='ledger'){document.documentElement.dataset.theme=t;}}catch(e){}`,
+            __html: `try{var t=localStorage.getItem('sgx-signal-theme');if(t==='paper'||t==='ledger'){document.documentElement.dataset.theme=t;}}catch(e){}try{var m=window.matchMedia('(max-width: 860px)').matches;var c=m?true:localStorage.getItem('sgx-sidebar-collapsed')==='1';document.documentElement.dataset.sidebar=c?'collapsed':'expanded';}catch(e){}`,
           }}
         />
       </head>
