@@ -1,0 +1,149 @@
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+import { db } from "@/lib/db";
+import { currentPrincipal } from "@/lib/auth/session";
+import { roleHas } from "@/lib/rbac";
+import { ApiAction } from "@/components/ApiAction";
+
+export const dynamic = "force-dynamic";
+
+export default async function AssetDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const principal = await currentPrincipal();
+  if (!principal?.orgId) redirect("/login");
+  const { id } = await params;
+  const asset = await db.asset.findFirst({ where: { id, orgId: principal.orgId } });
+  if (!asset) notFound();
+
+  const observations = await db.assetObservation.findMany({ where: { assetId: asset.id }, orderBy: { observedAt: "desc" }, take: 15 });
+  const assetChanges = await db.assetChange.findMany({ where: { assetId: asset.id }, orderBy: { id: "desc" }, take: 10 });
+  const endpoints = await db.endpoint.findMany({ where: { assetId: asset.id } });
+  const program = await db.program.findUnique({ where: { id: asset.programId } });
+  const canAuthorize = roleHas(principal.role!, "asset:write");
+
+  return (
+    <div>
+      <div className="row spread">
+        <div>
+          <h1 style={{ margin: 0, fontSize: "1.2rem" }} className="mono">{asset.canonicalLocator}</h1>
+          <p className="muted" style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
+            {asset.assetType} · <Link href={`/programs/${asset.programId}`}>{program?.name}</Link> · confidence {asset.confidence.toFixed(2)}
+          </p>
+        </div>
+        <span className={`badge scope-${asset.scopeState}`}>{asset.scopeState.replace("_", " ")}</span>
+      </div>
+
+      {asset.authorizationNote && <p className="hint">Authorization note: {asset.authorizationNote}</p>}
+
+      {canAuthorize && (
+        <div className="card">
+          <h2>Authorization decision (explicit, audited)</h2>
+          <p className="hint" style={{ marginTop: 0 }}>
+            Ladder: DISCOVERED → OWNERSHIP_VERIFIED → AUTHORIZED. A deliberate human decision is required at each step; discovery alone can never authorize testing.
+          </p>
+          <div className="row">
+            {asset.scopeState !== "OWNERSHIP_VERIFIED" && asset.scopeState !== "AUTHORIZED" && (
+              <ApiAction
+                label="Mark ownership verified"
+                method="PATCH"
+                url={`/api/v1/assets/${asset.id}`}
+                body={{ scope_state: "OWNERSHIP_VERIFIED", authorization_note: "Ownership verification recorded from UI" }}
+                className="btn small"
+              />
+            )}
+            {asset.scopeState === "OWNERSHIP_VERIFIED" && (
+              <ApiAction
+                label="Authorize for active testing"
+                method="PATCH"
+                url={`/api/v1/assets/${asset.id}`}
+                body={{ scope_state: "AUTHORIZED", authorization_note: "Explicit testing authorization recorded from UI" }}
+                className="btn small primary"
+                confirmText={`Authorize ${asset.canonicalLocator} for policy-gated active testing?`}
+              />
+            )}
+            {asset.scopeState !== "DENIED" && (
+              <ApiAction
+                label="Mark out-of-scope (DENIED)"
+                method="PATCH"
+                url={`/api/v1/assets/${asset.id}`}
+                body={{ scope_state: "DENIED", authorization_note: "Excluded from testing" }}
+                className="btn small danger"
+                confirmText="Exclude this asset from all active testing?"
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <div className="card">
+          <div className="row spread">
+            <h2>Observations (provenance)</h2>
+            {canAuthorize && (
+              <ApiAction
+                label="Capture snapshot / diff"
+                method="POST"
+                url="/api/v1/changes"
+                body={{ asset_id: asset.id }}
+                className="btn small"
+              />
+            )}
+          </div>
+          <h3 style={{ fontSize: "0.8rem", margin: "0.4rem 0 0.6rem", color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Detected changes
+          </h3>
+          {assetChanges.length === 0 ? (
+            <p className="hint" style={{ marginTop: 0 }}>No changes recorded. “Capture snapshot / diff” stores the current surface; later captures diff against it.</p>
+          ) : (
+            <table className="data">
+              <thead><tr><th>When</th><th>Change</th><th>Before → After</th></tr></thead>
+              <tbody>
+                {assetChanges.map((c) => (
+                  <tr key={c.id}>
+                    <td className="faint" style={{ fontSize: "0.72rem" }}>{c.observedAt.toISOString().slice(0, 16).replace("T", " ")}</td>
+                    <td><span className="badge info">{c.diffKind.replace("_", " ")}</span></td>
+                    <td className="mono" style={{ fontSize: "0.72rem" }}>
+                      <span className="faint">{c.beforeJson}</span> → <strong>{c.afterJson}</strong>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <h3 style={{ fontSize: "0.8rem", margin: "1rem 0 0.6rem", color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Observation history
+          </h3>
+          {observations.length === 0 ? <p className="empty">No observations recorded.</p> : (
+            <table className="data">
+              <thead><tr><th>Source</th><th>Observed</th><th>Confidence</th><th>Note</th></tr></thead>
+              <tbody>
+                {observations.map((o) => (
+                  <tr key={o.id}>
+                    <td><span className="badge info">{o.source}</span></td>
+                    <td className="faint" style={{ fontSize: "0.75rem" }}>{o.observedAt.toISOString().slice(0, 16).replace("T", " ")}</td>
+                    <td>{o.confidence.toFixed(2)}</td>
+                    <td className="mono" style={{ fontSize: "0.72rem", maxWidth: 260 }}>{o.note || JSON.stringify(JSON.parse(o.payloadJson)).slice(0, 80)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="card">
+          <h2>Endpoints ({endpoints.length})</h2>
+          {endpoints.length === 0 ? <p className="empty">No normalized endpoints.</p> : (
+            <table className="data">
+              <thead><tr><th>Method</th><th>Route template</th></tr></thead>
+              <tbody>
+                {endpoints.map((e) => (
+                  <tr key={e.id}><td><span className="badge neutral">{e.method}</span></td><td className="mono">{e.routeTemplate}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <h2 style={{ marginTop: "1rem" }}>Graph</h2>
+          <Link href={`/graph?asset=${asset.id}`} className="row" style={{ fontSize: "0.85rem" }}>Explore relationships in the knowledge graph →</Link>
+        </div>
+      </div>
+    </div>
+  );
+}

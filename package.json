@@ -1,0 +1,37 @@
+{
+  "name": "scopegraph-x",
+  "version": "0.2.0",
+  "private": true,
+  "description": "ScopeGraph X — enterprise scope-controlled vulnerability discovery & security research platform (authorized testing only)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "worker": "tsx scripts/worker.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "next": "^15.5.28",
+    "pdf-lib": "^1.17.1",
+    "prisma": "^6.19.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5",
+    "zod": "^4.6.7"
+  }
+}

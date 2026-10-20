@@ -1,0 +1,23 @@
+# Optional: local PostgreSQL for the production-schema profile.
+# NOTE (this machine): ports 5432/5434 may already be in use by other services —
+# run `netstat -ano | grep -E ":(5432|5433|5434)"` before starting and adjust
+# the host port below to one that is verified free.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: scopegraph
+      POSTGRES_PASSWORD: scopegraph-dev-only
+      POSTGRES_DB: scopegraph
+    ports:
+      - "5433:5432" # host port 5433; change if occupied
+    volumes:
+      - sgx-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scopegraph"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  sgx-pgdata:

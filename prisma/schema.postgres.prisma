@@ -1,0 +1,522 @@
+// ScopeGraph X — Prisma schema (PRD §8 data model)
+// Dev profile uses SQLite (zero-port, zero-conflict local dev per machine constraints).
+// The schema is kept PostgreSQL-compatible; switch provider + url for production.
+// SQLite has no native enums — status fields are Strings validated by zod at the service boundary.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id
+  slug      String   @unique
+  name      String
+  region    String   @default("eu-central")
+  status    String   @default("ACTIVE") // ACTIVE | SUSPENDED
+  createdAt DateTime @default(now())
+}
+
+model User {
+  id           String   @id
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+model Membership {
+  id          String   @id
+  orgId       String
+  principalId String
+  role        String // RESEARCHER | APPSEC_LEAD | VALIDATOR | PROGRAM_OWNER | TENANT_ADMIN | AUDITOR | PLATFORM_OPERATOR
+  state       String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+
+  @@unique([orgId, principalId])
+}
+
+model Session {
+  id         String    @id // sha256 of session token
+  userId     String
+  orgId      String?
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+model Program {
+  id               String   @id
+  orgId            String
+  provider         String   @default("manual") // manual | hackerone | bugcrowd | internal
+  handle           String
+  name             String
+  description      String   @default("")
+  authorizationRef String // provenance of authorization (URL/doc id/contract ref)
+  state            String   @default("DRAFT") // DRAFT | ACTIVE | SUSPENDED | CLOSED
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  assets           Asset[]
+  campaigns        Campaign[]
+  scopeVersions    ScopeVersion[]
+
+  @@unique([orgId, provider, handle])
+  @@index([orgId])
+}
+
+model ScopeVersion {
+  id           String    @id
+  programId    String
+  version      Int
+  rulesJson    String // structured allow/deny rules (see policy/rules.ts schema)
+  note         String    @default("")
+  provenance   String    @default("") // where the rules came from
+  status       String    @default("PROPOSED") // PROPOSED | APPROVED | ACTIVE | SUPERSEDED | REVOKED | REJECTED
+  proposedBy   String
+  approvedBy   String?
+  activatedAt  DateTime?
+  revokedAt    DateTime?
+  revokedReason String?
+  createdAt    DateTime  @default(now())
+  program      Program   @relation(fields: [programId], references: [id])
+
+  @@unique([programId, version])
+}
+
+model Asset {
+  id               String    @id
+  orgId            String
+  programId        String
+  canonicalLocator String // canonical host[:port] or locator
+  assetType        String // HOST | DOMAIN | IP | WEB_APP | API | CLOUD_CONFIG
+  displayName      String    @default("")
+  scopeState       String    @default("DISCOVERED") // DISCOVERED | ASSOCIATED | OWNERSHIP_VERIFIED | AUTHORIZED | DENIED
+  authorizationNote String   @default("")
+  confidence       Float     @default(0.5)
+  firstSeenAt      DateTime  @default(now())
+  lastSeenAt       DateTime  @default(now())
+  program          Program   @relation(fields: [programId], references: [id])
+  observations     AssetObservation[]
+  endpoints        Endpoint[]
+
+  @@unique([programId, canonicalLocator, assetType])
+  @@index([orgId, scopeState])
+}
+
+model AssetObservation {
+  id          String   @id
+  assetId     String
+  source      String // dns | ct | rdap | metadata | browser | api-schema | manual | mock-passive
+  observedAt  DateTime @default(now())
+  evidenceId  String?
+  confidence  Float    @default(0.5)
+  payloadJson String   @default("{}")
+  note        String   @default("")
+  asset       Asset    @relation(fields: [assetId], references: [id])
+
+  @@index([assetId, observedAt])
+}
+
+model Campaign {
+  id                 String    @id
+  orgId              String
+  programId          String
+  policyVersionId    String
+  name               String
+  mode               String // PASSIVE_ONLY | PASSIVE_THEN_APPROVED_ACTIVE
+  budgetJson         String // { maxRequests, maxRps, maxConcurrency }
+  state              String    @default("DRAFT") // DRAFT | RUNNING | COMPLETED | STOPPED | FAILED
+  createdBy          String
+  createdAt          DateTime  @default(now())
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  emergencyStoppedAt DateTime?
+  program            Program   @relation(fields: [programId], references: [id])
+  jobs               Job[]
+
+  @@index([programId, state])
+  @@index([orgId])
+}
+
+model Job {
+  id             String    @id
+  campaignId     String
+  kind           String // passive-discovery | active-probe | scanner-import | ai-hypothesis | report
+  idempotencyKey String
+  status         String    @default("QUEUED") // QUEUED | RUNNING | SUCCEEDED | FAILED | CANCELLED
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3)
+  lastError      String?
+  requestJson    String    @default("{}")
+  resultJson     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  finishedAt     DateTime?
+  campaign       Campaign  @relation(fields: [campaignId], references: [id])
+
+  @@unique([campaignId, idempotencyKey])
+  @@index([status])
+}
+
+model Identity {
+  id          String   @id
+  orgId       String
+  programId   String?
+  roleLabel   String
+  tenantLabel String   @default("")
+  kind        String   @default("RESEARCHER_OWNED") // RESEARCHER_OWNED | CUSTOMER_PROVISIONED
+  secretRef   String // vault reference ONLY — never a plaintext credential
+  createdAt   DateTime @default(now())
+}
+
+model Endpoint {
+  id             String   @id
+  assetId        String
+  method         String
+  routeTemplate  String
+  schemaRef      String?
+  normalizedAt   DateTime @default(now())
+  asset          Asset    @relation(fields: [assetId], references: [id])
+
+  @@unique([assetId, method, routeTemplate])
+}
+
+model Resource {
+  id              String   @id
+  programId       String
+  objectType      String
+  fixtureRef      String? // disposable test fixture association
+  ownerIdentityId String?
+  invariantJson   String? // analyst-approved state machine invariants
+  createdAt       DateTime @default(now())
+}
+
+model GraphEdge {
+  id             String   @id
+  orgId          String
+  sourceType     String
+  sourceId       String
+  relation       String // IN_SCOPE_OF | HOSTS | EXPOSES | CALLS | HAS_ROLE | BELONGS_TO | OWNS | CAN_ACCESS | TRANSITIONS_TO | EVIDENCED_BY | SUPPORTS | CONTRADICTS
+  targetType     String
+  targetId       String
+  observationId  String?
+  confidence     Float    @default(0.5)
+  policyContext  String   @default("")
+  derivedAt      DateTime @default(now())
+
+  @@index([sourceType, sourceId, relation])
+  @@index([targetType, targetId, relation])
+  @@unique([sourceType, sourceId, relation, targetType, targetId])
+}
+
+model Hypothesis {
+  id                        String   @id
+  orgId                     String
+  campaignId                String?
+  programId                 String
+  origin                    String   @default("AI") // AI | SCANNER | MANUAL
+  category                  String
+  summary                   String
+  assumptionsJson           String   @default("[]")
+  evidenceRefsJson          String   @default("[]")
+  risk                      String   @default("")
+  proposedValidation        String   @default("")
+  requiredApprovalsJson     String   @default("[]")
+  expectedOutcome           String   @default("")
+  alternativeExplanationsJson String @default("[]")
+  confidence                Float    @default(0.3)
+  limitations               String   @default("")
+  status                    String   @default("PROPOSED") // PROPOSED | TESTING | SUPPORTED | DOWNGRADED | REJECTED
+  modelVersion              String   @default("mock-provider-1")
+  createdAt                 DateTime @default(now())
+
+  @@index([programId, status])
+}
+
+model Test {
+  id              String    @id
+  hypothesisId    String?
+  orgId           String
+  programId       String
+  oracleId        String    @default("")
+  policyVersionId String?
+  approvalId      String?
+  planJson        String    @default("{}")
+  status          String    @default("PROPOSED") // PROPOSED | APPROVED | REJECTED | EXECUTED | FAILED
+  proposedBy      String
+  approvedBy      String?
+  createdAt       DateTime  @default(now())
+  executedAt      DateTime?
+
+  @@index([programId, status])
+}
+
+model Observation {
+  id              String   @id
+  testId          String
+  evidenceId      String?
+  observedAt      DateTime @default(now())
+  normalizedJson  String   @default("{}")
+}
+
+model Finding {
+  id                String    @id
+  orgId             String
+  programId         String
+  assetId           String?
+  hypothesisId      String?
+  fingerprint       String
+  category          String
+  title             String
+  description       String
+  severity          String // CRITICAL | HIGH | MEDIUM | LOW | INFO
+  confidence        Float     @default(0.3)
+  status            String    @default("PROPOSED") // PROPOSED|OBSERVED|REPRODUCED|REVIEWED|REPORTED|ACCEPTED|CLOSED|REJECTED|DUPLICATE|FALSE_POSITIVE
+  expectedBehavior  String    @default("")
+  observedBehavior  String    @default("")
+  reproductionJson  String    @default("[]")
+  impact            String    @default("")
+  limitations       String    @default("")
+  remediation       String    @default("")
+  validationStatus  String    @default("UNVALIDATED")
+  assignedTo        String?
+  validatedBy       String?
+  policyVersionId   String?
+  sourceDetector    String    @default("manual")
+  evidenceLinks    FindingEvidence[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([programId, fingerprint])
+  @@index([orgId, status])
+}
+
+model FindingStatusEvent {
+  id         String   @id
+  findingId  String
+  fromStatus String
+  toStatus   String
+  actorId    String
+  reason     String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([findingId])
+}
+
+model FindingEvidence {
+  findingId  String
+  evidenceId String
+  role       String // primary | reproduction | validation
+  finding    Finding @relation(fields: [findingId], references: [id])
+
+  @@id([findingId, evidenceId])
+}
+
+model Evidence {
+  id                String    @id
+  orgId             String
+  sha256            String
+  encryptedObjectUri String // local object-store URI (dev) — content-addressed
+  contentType       String    @default("application/json")
+  sensitivity       String    @default("INTERNAL") // PUBLIC | INTERNAL | CONFIDENTIAL | RESTRICTED
+  source            String    @default("manual")
+  collectedAt       DateTime  @default(now())
+  expiresAt         DateTime? // retention (NFR-07: default 30 days)
+  redactionStatus   String    @default("REDACTED")
+  sizeBytes         Int       @default(0)
+  createdBy         String
+  findingCount      Int       @default(0)
+
+  @@unique([orgId, sha256])
+}
+
+model AuditEvent {
+  id            String   @unique
+  seq           Int      @id @default(autoincrement())
+  orgId         String
+  actorType     String // USER | SERVICE | SYSTEM
+  actorId       String
+  action        String // e.g. policy.activate, campaign.start, access.denied
+  resourceType  String
+  resourceId    String
+  decision      String // ALLOW | DENY | N/A
+  reason        String   @default("")
+  metadataJson  String   @default("{}")
+  requestRef    String   @default("")
+  prevDigest    String
+  digest        String
+  timestamp     DateTime @default(now())
+
+  @@index([orgId, timestamp])
+  @@index([action])
+}
+
+model IdempotencyRecord {
+  key             String   @id // Idempotency-Key header, scoped by org+route in app logic
+  orgId           String
+  route           String
+  requestHash     String
+  responseStatus  Int
+  responseBodyJson String
+  createdAt       DateTime @default(now())
+}
+
+model Approval {
+  id        String    @id
+  orgId     String
+  programId String?
+  kind      String // SCOPE_VERSION | TEST | EMERGENCY_STOP_LIFT
+  targetId  String
+  status    String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  reason    String    @default("")
+  requestedBy String
+  decidedBy String?
+  createdAt DateTime  @default(now())
+  decidedAt DateTime?
+}
+
+model EmergencyStop {
+  id        String    @id
+  scope     String // GLOBAL | ORG | PROGRAM
+  orgId     String?
+  programId String?
+  reason    String
+  createdBy String
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  liftedAt  DateTime?
+}
+
+model EgressCheck {
+  id          String   @id
+  orgId       String
+  campaignId  String?
+  jobRef      String
+  destination String
+  method      String
+  decision    String // ALLOW | DENY
+  reason      String
+  simulated   Boolean  @default(true) // dev executor never performs real egress
+  timestamp   DateTime @default(now())
+
+  @@index([orgId, decision])
+}
+
+// --- v0.2 additions: MFA, snapshots/change feed, invariants, SAST/SCA, webhooks ---
+
+model UserMfa {
+  userId         String   @id
+  secretEnc      String   // AES-256-GCM encrypted TOTP secret — never plaintext
+  enabled        Boolean  @default(false)
+  enrolledAt     DateTime @default(now())
+  verifiedAt     DateTime?
+}
+
+model AssetSnapshot {
+  id          String   @id
+  assetId     String
+  fingerprint String   // sha256 of canonical content
+  contentJson String   // normalized endpoint/attribute set
+  createdAt   DateTime @default(now())
+
+  @@index([assetId, createdAt])
+}
+
+model AssetChange {
+  id            String   @id
+  orgId         String
+  assetId       String
+  programId     String
+  diffKind      String // NEW_ENDPOINT | REMOVED_ENDPOINT | SCHEMA_DRIFT | SCOPE_STATE | ATTRIBUTE
+  beforeJson    String   @default("{}")
+  afterJson     String   @default("{}")
+  confidence    Float    @default(0.8)
+  observedAt    DateTime @default(now())
+  acknowledged  Boolean  @default(false)
+  acknowledgedBy String?
+
+  @@index([orgId, observedAt])
+  @@index([programId])
+}
+
+model InvariantRun {
+  id            String   @id
+  orgId         String
+  programId     String
+  resourceId    String
+  status        String   @default("COMPLETED") // COMPLETED | VIOLATIONS_FOUND | FAILED
+  transitionsJson String @default("[]")
+  violationsJson String @default("[]")
+  evidenceId    String?
+  ranAt         DateTime @default(now())
+
+  @@index([programId, ranAt])
+}
+
+model ExternalFinding {
+  id            String   @id
+  orgId         String
+  programId     String
+  assetId       String?
+  tool          String // sast | sca
+  rule          String
+  locator       String   @default("") // file:line or package@version
+  cwe           String   @default("")
+  severity      String   @default("MEDIUM")
+  description   String   @default("")
+  evidenceId    String?
+  correlatedFindingId String?
+  correlationStatus String @default("UNCORRELATED") // UNCORRELATED | CORRELATED_UNCONFIRMED
+  importedAt    DateTime @default(now())
+
+  @@index([programId, tool])
+}
+
+model WebhookEndpoint {
+  id        String   @id
+  orgId     String
+  url       String
+  secret    String   // HMAC signing secret (encrypted at rest)
+  eventsJson String  @default("[]")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([orgId])
+}
+
+model WebhookDelivery {
+  id            String    @id
+  orgId         String
+  endpointId    String
+  eventType     String
+  payloadJson   String
+  timestampMs   BigInt
+  nonce         String
+  signature     String
+  status        String    @default("PENDING") // PENDING | DELIVERED | DEAD
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(5)
+  nextAttemptAt DateTime  @default(now())
+  lastResponse  String?
+  createdAt     DateTime  @default(now())
+  deliveredAt   DateTime?
+
+  @@index([status, nextAttemptAt])
+}
+
+model MfaChallenge {
+  id        String   @id // sha256 of challenge token
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
