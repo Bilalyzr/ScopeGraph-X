@@ -89,3 +89,15 @@ export function roleHas(role: string | null | undefined, permission: Permission)
 export function isRole(v: string): v is Role {
   return (ROLES as readonly string[]).includes(v);
 }
+
+// Role families drive the two separated experiences:
+//   finder     — bug-bounty hunters (researchers, leads, validators): the Workbench
+//   governance — admins, owners, auditors, operators: the Admin Console
+export type RoleFamily = "finder" | "governance";
+
+const FINDER_ROLES: ReadonlySet<string> = new Set(["RESEARCHER", "APPSEC_LEAD", "VALIDATOR"]);
+
+export function roleFamily(role: string | null | undefined): RoleFamily {
+  if (role && FINDER_ROLES.has(role)) return "finder";
+  return "governance"; // PROGRAM_OWNER, TENANT_ADMIN, AUDITOR, PLATFORM_OPERATOR, unknown
+}

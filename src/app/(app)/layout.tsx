@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { currentPrincipal } from "@/lib/auth/session";
 import { OrgSwitcher } from "@/components/OrgSwitcher";
 import { EmergencyStopButton } from "@/components/EmergencyStopButton";
+import { roleFamily } from "@/lib/rbac";
 import LogoutButton from "@/components/LogoutButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { BranchedNav, type NavGroup } from "@/components/BranchedNav";
@@ -26,37 +27,67 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       })) != null
     : false;
 
-  const nav: NavGroup[] = [
-    {
-      code: "01",
-      section: "Overview",
-      items: [
-        { href: "/dashboard", label: "Dashboard", code: "SYS" },
-        { href: "/programs", label: "Programs & Scope", code: "PRM" },
-        { href: "/assets", label: "Asset Inventory", code: "AST" },
-        { href: "/graph", label: "Knowledge Graph", code: "KGR" },
-      ],
-    },
-    {
-      code: "02",
-      section: "Research",
-      items: [
-        { href: "/campaigns", label: "Campaigns", code: "CMP" },
-        { href: "/research", label: "Hypotheses & Tests", code: "HYP" },
-        { href: "/findings", label: "Findings", code: "FND" },
-        { href: "/reports", label: "Reports", code: "RPT" },
-      ],
-    },
-    {
-      code: "03",
-      section: "Governance",
-      items: [
-        { href: "/audit", label: "Audit Log", code: "AUD" },
-        { href: "/admin", label: "Administration", code: "ADM" },
-        { href: "/settings", label: "Account & Security", code: "SEC" },
-      ],
-    },
-  ];
+  // Separated experiences: hunting roles get the Research-first Workbench nav;
+  // governance roles get the decision-first Admin Console nav.
+  const family = roleFamily(principal.role);
+  const nav: NavGroup[] =
+    family === "finder"
+      ? [
+          {
+            code: "01",
+            section: "Workbench",
+            items: [
+              { href: "/dashboard", label: "Finder Dashboard", code: "SYS" },
+              { href: "/assets", label: "Asset Inventory", code: "AST" },
+              { href: "/graph", label: "Knowledge Graph", code: "KGR" },
+            ],
+          },
+          {
+            code: "02",
+            section: "Research",
+            items: [
+              { href: "/campaigns", label: "Campaigns", code: "CMP" },
+              { href: "/research", label: "Hypotheses & Tests", code: "HYP" },
+              { href: "/findings", label: "Findings", code: "FND" },
+              { href: "/reports", label: "Reports", code: "RPT" },
+            ],
+          },
+          {
+            code: "03",
+            section: "Shared",
+            items: [
+              { href: "/programs", label: "Programs & Scope", code: "PRM" },
+              { href: "/settings", label: "Account & Security", code: "SEC" },
+            ],
+          },
+        ]
+      : [
+          {
+            code: "01",
+            section: "Console",
+            items: [{ href: "/dashboard", label: "Admin Console", code: "SYS" }],
+          },
+          {
+            code: "02",
+            section: "Governance",
+            items: [
+              { href: "/programs", label: "Programs & Scope", code: "PRM" },
+              { href: "/assets", label: "Asset Inventory", code: "AST" },
+              { href: "/findings", label: "Findings", code: "FND" },
+              { href: "/audit", label: "Audit Log", code: "AUD" },
+              { href: "/admin", label: "Administration", code: "ADM" },
+            ],
+          },
+          {
+            code: "03",
+            section: "Shared",
+            items: [
+              { href: "/campaigns", label: "Campaigns", code: "CMP" },
+              { href: "/graph", label: "Knowledge Graph", code: "KGR" },
+              { href: "/settings", label: "Account & Security", code: "SEC" },
+            ],
+          },
+        ];
 
   const tickerItems = [
     `TENANT: ${(activeOrg?.name ?? "UNSELECTED").toUpperCase()}`,

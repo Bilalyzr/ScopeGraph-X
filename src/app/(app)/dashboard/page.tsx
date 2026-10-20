@@ -4,6 +4,9 @@ import { db } from "@/lib/db";
 import { currentPrincipal } from "@/lib/auth/session";
 import { DashboardHero } from "./DashboardHero";
 import { IndexRow, RevealScope } from "./DashboardClient";
+import { FinderQuickActions } from "./FinderQuickActions";
+import { GovernanceDashboard } from "./GovernanceDashboard";
+import { roleFamily } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -67,8 +70,26 @@ export default async function DashboardPage() {
     { label: "Changes", value: recentChanges.length, sub: "recent surface diffs", href: "/assets" },
   ];
 
+  // Separated experiences: governance roles get the Admin Console; hunting
+  // roles keep this Workbench (with quick actions added below).
+  if (roleFamily(principal.role) === "governance") {
+    return (
+      <GovernanceDashboard
+        orgId={orgId}
+        orgName={org?.name ?? "Workspace"}
+        role={principal.role ?? "—"}
+      />
+    );
+  }
+
+  const firstProgramId = programs[0]?.id ?? null;
+
   return (
     <RevealScope className="dx">
+      <div data-reveal="up" style={{ marginBottom: "1rem" }}>
+        <p className="dx-kicker"><span>00</span> Finder workbench</p>
+      </div>
+      <FinderQuickActions programId={firstProgramId} />
       <DashboardHero
         counts={{ programs: programs.length, authorized, endpoints, outside: assets.length - authorized, findings: findings.length }}
         halted={!!stops}
