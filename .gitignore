@@ -16,3 +16,4 @@ prd-extracted.txt
 
 # test artifacts
 tests/test.db
+*.tsbuildinfo
