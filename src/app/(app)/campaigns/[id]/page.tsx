@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentPrincipal } from "@/lib/auth/session";
 import { ApiAction } from "@/components/ApiAction";
+import { BackLink } from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
 
   return (
     <div>
+      <BackLink href="/campaigns" label="All campaigns" />
       <div className="row spread">
         <div>
           <div className="mono-label">CAMPAIGN TELEMETRY // EGRESS TRACE</div>

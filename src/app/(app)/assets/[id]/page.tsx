@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { currentPrincipal } from "@/lib/auth/session";
 import { roleHas } from "@/lib/rbac";
 import { ApiAction } from "@/components/ApiAction";
+import { BackLink } from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div>
+      <BackLink href="/assets" label="Asset inventory" />
       <div className="row spread">
         <div>
           <div className="mono-label">ASSET DOSSIER // PROVENANCE &amp; LADDER</div>

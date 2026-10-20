@@ -85,10 +85,18 @@ interface SceneNode {
   state: string;
 }
 
+export interface SceneCounts { core: number; s1: number; s2: number; out: number }
+
 export interface SceneOptions {
   mobile: boolean;
   reduced: boolean;
   onFrame?: (f: Frame, s: number) => void;
+  /** Drive node counts from real data (programs / authorized assets / endpoints / outside assets). */
+  counts?: SceneCounts;
+  /** Pin parts of the frame instead of following the scroll timeline (embedded use). */
+  frame?: Partial<Frame>;
+  /** Hover inspection of nodes (disable when nodes do not map to real records). */
+  interactive?: boolean;
 }
 
 interface Ping { t0: number; allowed: boolean; dx: number; dy: number; dz: number }
@@ -119,7 +127,7 @@ export class ScopeScene {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d", { alpha: true })!;
     this.opts = opts;
-    this.build(opts.mobile ? 280 : 640);
+    this.build(opts.mobile ? 280 : 640, opts.counts);
     const n = this.nodes.length;
     this.wx = new Float32Array(n); this.wy = new Float32Array(n); this.wz = new Float32Array(n);
     this.sx = new Float32Array(n); this.sy = new Float32Array(n); this.sd = new Float32Array(n);
@@ -128,13 +136,13 @@ export class ScopeScene {
     this.resize();
   }
 
-  private build(total: number) {
+  private build(total: number, counts?: SceneCounts) {
     const r = rng(0x5c09e);
     const hex = () => Math.floor(r() * 0xffff).toString(16).padStart(4, "0");
-    const core = 6;
-    const s1 = Math.round(total * 0.08);
-    const s2 = Math.round(total * 0.28);
-    const out = total - core - s1 - s2;
+    const core = counts ? counts.core : 6;
+    const s1 = counts ? counts.s1 : Math.round(total * 0.08);
+    const s2 = counts ? counts.s2 : Math.round(total * 0.28);
+    const out = counts ? counts.out : total - core - s1 - s2;
     const fib = (k: number, n: number, rad: number, jitter: number): [number, number, number] => {
       const y = 1 - ((k + 0.5) / n) * 2;
       const rr = Math.sqrt(1 - y * y);
@@ -185,16 +193,19 @@ export class ScopeScene {
     for (let k = 0; k < 14 && endpoints.length; k++) {
       const e = endpoints[Math.floor(r() * endpoints.length)];
       const a = this.nodes[e].parent;
-      const p = this.nodes[a].parent;
-      this.paths.push([p, a, e]);
+      const p = a >= 0 ? this.nodes[a].parent : -1;
+      if (a >= 0 && p >= 0) this.paths.push([p, a, e]);
     }
-    const firstOf = (shell: number) => this.nodes.findIndex((n) => n.shell === shell);
+    const nth = (shell: number, k: number) => {
+      const all = this.nodes.map((n, i) => (n.shell === shell ? i : -1)).filter((i) => i >= 0);
+      return all.length ? all[Math.min(k, all.length - 1)] : -1;
+    };
     this.labels = [
-      { idx: firstOf(0), text: "PROGRAM · scope v3 active" },
-      { idx: firstOf(1) + 3, text: "ASSET · authorized" },
-      { idx: firstOf(2) + 11, text: "ENDPOINT · GET /v1/orders/{id}" },
-      { idx: firstOf(3) + 7, text: "admin.* · DENIED by policy" },
-    ].filter((l) => l.idx >= 0 && l.idx < this.nodes.length);
+      { idx: nth(0, 0), text: "PROGRAM · scope v3 active" },
+      { idx: nth(1, 3), text: "ASSET · authorized" },
+      { idx: nth(2, 11), text: "ENDPOINT · GET /v1/orders/{id}" },
+      { idx: nth(3, 7), text: "admin.* · DENIED by policy" },
+    ].filter((l) => l.idx >= 0);
   }
 
   resize() {
@@ -294,7 +305,7 @@ export class ScopeScene {
   private draw(now: number) {
     const { ctx, w, h } = this;
     const mobile = this.opts.mobile;
-    const F = sampleFrame(this.sCur);
+    const F = this.opts.frame ? { ...sampleFrame(this.sCur), ...this.opts.frame } : sampleFrame(this.sCur);
     this.opts.onFrame?.(F, this.sCur);
     ctx.clearRect(0, 0, w, h);
 
@@ -488,7 +499,7 @@ export class ScopeScene {
     };
     if (F.labels > 0.02 && !mobile) this.labels.forEach((l, k) => tag(l.idx, l.text, F.labels * dim, k % 2 ? -1 : 1, 26 + k * 14));
 
-    if (!mobile && F.morph > 0.6 && this.px > -1000) {
+    if (this.opts.interactive !== false && !mobile && F.morph > 0.6 && this.px > -1000) {
       let best = -1, bd = 26 * 26;
       for (let i = 0; i < n; i++) {
         if (this.sd[i] < 0) continue;

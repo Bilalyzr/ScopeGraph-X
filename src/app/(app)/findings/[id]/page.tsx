@@ -4,6 +4,7 @@ import { currentPrincipal } from "@/lib/auth/session";
 import { roleHas, type Role } from "@/lib/rbac";
 import { canTransition, roleCanSetStatus, type FindingStatus } from "@/lib/findings/lifecycle";
 import { FindingActions } from "./FindingActions";
+import { BackLink } from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ export default async function FindingDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div>
+      <BackLink href="/findings" label="All findings" />
       <div className="row spread">
         <div>
           <div className="mono-label">FINDING RECORD // IMMUTABLE EVIDENCE CHAIN</div>

@@ -8,6 +8,7 @@ import { parseRules } from "@/lib/policy/rules";
 import { ApiAction } from "@/components/ApiAction";
 import { ProposeScopeForm } from "./ProposeScopeForm";
 import { OpenApiImportForm } from "./OpenApiImportForm";
+import { BackLink } from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function ProgramDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div>
+      <BackLink href="/programs" label="All programs" />
       <div className="row spread">
         <div>
           <div className="mono-label">PROGRAM DOSSIER // POLICY LEDGER</div>

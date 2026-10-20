@@ -4,6 +4,7 @@ import { isMfaEnabled } from "@/lib/auth/mfa";
 import PasswordSection from "./PasswordSection";
 import MfaSection from "./MfaSection";
 import SessionsSection from "./SessionsSection";
+import { BackLink } from "@/components/BackLink";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export default async function SettingsPage() {
 
   return (
     <div>
+      <BackLink href="/dashboard" label="Dashboard" />
       <div className="row spread" style={{ marginBottom: "0.4rem" }}>
         <div>
           <div className="mono-label">OPERATOR CREDENTIALS // TOTP &amp; SESSION LEDGER</div>

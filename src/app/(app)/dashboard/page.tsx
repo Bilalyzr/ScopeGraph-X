@@ -2,16 +2,36 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentPrincipal } from "@/lib/auth/session";
+import { DashboardHero } from "./DashboardHero";
+import { IndexRow, RevealScope } from "./DashboardClient";
 
 export const dynamic = "force-dynamic";
+
+const SEVERITIES = [
+  { sev: "CRITICAL", color: "var(--red)" },
+  { sev: "HIGH", color: "var(--orange)" },
+  { sev: "MEDIUM", color: "var(--amber)" },
+  { sev: "LOW", color: "var(--violet)" },
+  { sev: "INFO", color: "var(--muted)" },
+];
+const SCOPE_STATES = [
+  { s: "AUTHORIZED", color: "var(--green)" },
+  { s: "OWNERSHIP_VERIFIED", color: "var(--violet)" },
+  { s: "ASSOCIATED", color: "var(--amber)" },
+  { s: "DISCOVERED", color: "var(--muted)" },
+  { s: "DENIED", color: "var(--red)" },
+];
+const LIFECYCLE = ["PROPOSED", "OBSERVED", "REPRODUCED", "REVIEWED", "REPORTED", "ACCEPTED", "CLOSED"];
+const OFF_RAMPS = ["REJECTED", "DUPLICATE", "FALSE_POSITIVE"];
 
 export default async function DashboardPage() {
   const principal = await currentPrincipal();
   if (!principal?.orgId) redirect("/login");
   const orgId = principal.orgId;
 
-  // Every metric below is derived from stored application data (PRD §B).
-  const [programs, campaigns, assets, findings, jobs, egressDenies, recentAudit, stops, recentChanges] = await Promise.all([
+  // Every metric below is derived from stored application data (PRD A–B).
+  const [org, programs, campaigns, assets, findings, jobs, egressDenies, recentAudit, stops, recentChanges, endpoints] = await Promise.all([
+    db.organization.findUnique({ where: { id: orgId } }),
     db.program.findMany({ where: { orgId } }),
     db.campaign.findMany({ where: { orgId } }),
     db.asset.findMany({ where: { orgId } }),
@@ -21,371 +41,262 @@ export default async function DashboardPage() {
     db.auditEvent.findMany({ where: { orgId }, orderBy: { timestamp: "desc" }, take: 8 }),
     db.emergencyStop.findFirst({ where: { active: true, OR: [{ scope: "GLOBAL" }, { orgId }] } }),
     db.assetChange.findMany({ where: { orgId }, orderBy: { id: "desc" }, take: 5 }),
+    db.endpoint.count({ where: { asset: { orgId } } }),
   ]);
 
+  const count = <T,>(rows: T[], key: (r: T) => string) =>
+    rows.reduce<Record<string, number>>((acc, r) => ({ ...acc, [key(r)]: (acc[key(r)] ?? 0) + 1 }), {});
+  const assetsByState = count(assets, (a) => a.scopeState);
+  const findingsBySeverity = count(findings, (f) => f.severity);
+  const findingsByStatus = count(findings, (f) => f.status);
+  const jobsByStatus = count(jobs, (j) => j.status);
   const activeCampaigns = campaigns.filter((c) => c.state === "RUNNING").length;
-  const assetsByState = assets.reduce<Record<string, number>>((acc, a) => ({ ...acc, [a.scopeState]: (acc[a.scopeState] ?? 0) + 1 }), {});
-  const findingsBySeverity = findings.reduce<Record<string, number>>((acc, f) => ({ ...acc, [f.severity]: (acc[f.severity] ?? 0) + 1 }), {});
   const validated = findings.filter((f) => f.validationStatus === "VALIDATED").length;
-  const jobsByStatus = jobs.reduce<Record<string, number>>((acc, j) => ({ ...acc, [j.status]: (acc[j.status] ?? 0) + 1 }), {});
-  const endpoints = await db.endpoint.count({ where: { asset: { orgId } } });
+  const candidates = findingsByStatus.PROPOSED ?? 0;
+  const authorized = assetsByState.AUTHORIZED ?? 0;
+  const offRampTotal = OFF_RAMPS.reduce((n, s) => n + (findingsByStatus[s] ?? 0), 0);
+  const livePlate = LIFECYCLE.reduce((best, s, i) => ((findingsByStatus[s] ?? 0) > 0 ? i : best), -1);
+
+  const metrics = [
+    { label: "Programs", value: programs.length, sub: `${programs.filter((p) => p.state === "ACTIVE").length} active`, href: "/programs" },
+    { label: "Campaigns", value: campaigns.length, sub: `${activeCampaigns} running`, href: "/campaigns" },
+    { label: "Assets", value: assets.length, sub: `${authorized} authorized · ${assetsByState.DISCOVERED ?? 0} discovered`, href: "/assets" },
+    { label: "Endpoints", value: endpoints, sub: "normalized routes", href: "/assets" },
+    { label: "Findings", value: findings.length, sub: `${validated} validated · ${candidates} candidates`, href: "/findings" },
+    { label: "Refused", value: egressDenies, sub: "gateway DENY decisions", href: "/audit", alert: egressDenies > 0 },
+    { label: "Changes", value: recentChanges.length, sub: "recent surface diffs", href: "/assets" },
+  ];
 
   return (
-    <div>
-      <div className="row spread" style={{ marginBottom: "0.75rem" }}>
-        <div>
-          <div className="mono-label" style={{ marginBottom: "0.2rem" }}>
-            INSTRUMENT PANEL // REAL-TIME LEDGER
-          </div>
-          <h1 style={{ margin: 0 }}>
-            Security operations dashboard
-          </h1>
-        </div>
-        <div className="row">
-          {stops ? (
-            <span className="badge danger">⛔ EMERGENCY STOP ACTIVE</span>
-          ) : (
-            <span className="badge ok">
-              <span className="signal-dot" style={{ width: 6, height: 6 }} /> GATEWAY ONLINE
-            </span>
-          )}
-          <Link href="/campaigns" className="btn small primary">
-            DISPATCH CAMPAIGN →
-          </Link>
-        </div>
-      </div>
+    <RevealScope className="dx">
+      <DashboardHero
+        counts={{ programs: programs.length, authorized, endpoints, outside: assets.length - authorized, findings: findings.length }}
+        halted={!!stops}
+        orgName={org?.name ?? "Workspace"}
+        role={principal.role ?? "—"}
+        denials={egressDenies}
+        candidates={candidates}
+      />
 
-      {/* Signature Component: Section Label + Stat Rail */}
-      <div className="section-label">
-        <span className="section-label-num">01</span>
-        <span>TELEMETRY STAT RAIL</span>
-      </div>
+      {/* ------------------------------------------------------------ 01 telemetry */}
+      <section className="dx-section" aria-labelledby="dx-h1">
+        <header className="dx-head">
+          <p className="dx-kicker" data-reveal="up"><span>01</span> Telemetry</p>
+          <h2 id="dx-h1" className="dx-h2" data-reveal="up">The surface, counted.</h2>
+        </header>
+        <div className="dx-plates">
+          {metrics.map((m, i) => (
+            <Link key={m.label} href={m.href} className={`dx-plate ${m.alert ? "alert" : ""}`} data-reveal="up" style={{ ["--d" as string]: i }}>
+              <span className="dx-plate-label">{m.label}</span>
+              <span className="dx-plate-n">{m.value}</span>
+              <span className="dx-plate-sub">{m.sub}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
 
-      <div className="grid metrics" role="region" aria-label="Operational metrics stat rail">
-        <div className="metric">
-          <div className="label">Programs</div>
-          <div className="value">{programs.length}</div>
-          <div className="sub">{programs.filter((p) => p.state === "ACTIVE").length} active</div>
-        </div>
-        <div className="metric">
-          <div className="label">Campaigns</div>
-          <div className="value">{campaigns.length}</div>
-          <div className="sub">{activeCampaigns} running</div>
-        </div>
-        <div className="metric">
-          <div className="label">Assets</div>
-          <div className="value">{assets.length}</div>
-          <div className="sub">
-            {assetsByState.AUTHORIZED ?? 0} auth · {assetsByState.DISCOVERED ?? 0} disc
-          </div>
-        </div>
-        <div className="metric">
-          <div className="label">Endpoints</div>
-          <div className="value">{endpoints}</div>
-          <div className="sub">normalized routes</div>
-        </div>
-        <div className="metric">
-          <div className="label">Findings</div>
-          <div className="value">{findings.length}</div>
-          <div className="sub">
-            {validated} validated · {findings.filter((f) => f.status === "PROPOSED").length} cand
-          </div>
-        </div>
-        <div className="metric">
-          <div className="label">Policy denials</div>
-          <div className="value">{egressDenies}</div>
-          <div className="sub">gateway DENY decisions</div>
-        </div>
-        <div className="metric">
-          <div className="label">Recent changes</div>
-          <div className="value">{recentChanges.length}</div>
-          <div className="sub">surface diffs (7d)</div>
-        </div>
-      </div>
+      {/* ------------------------------------------------------------ 02 posture */}
+      <section className="dx-section" aria-labelledby="dx-h2">
+        <header className="dx-head">
+          <p className="dx-kicker" data-reveal="up"><span>02</span> Threat posture</p>
+          <h2 id="dx-h2" className="dx-h2" data-reveal="up">Severity and authorization, side by side.</h2>
+        </header>
+        <div className="dx-split2">
+          <article className="dx-card" data-reveal="mask">
+            <div>
+              <div className="dx-card-head">
+                <h3>Findings by severity</h3>
+                <Link href="/findings" className="dx-link">All findings →</Link>
+              </div>
+              {findings.length === 0 ? (
+                <p className="dx-empty">No findings yet — candidates appear here once research or scanner imports run.</p>
+              ) : (
+                <>
+                  <div className="dx-stack" title="Findings distribution by severity">
+                    {SEVERITIES.map(({ sev, color }) => {
+                      const n = findingsBySeverity[sev] ?? 0;
+                      return n ? <span key={sev} style={{ flexGrow: n, background: color }} /> : null;
+                    })}
+                  </div>
+                  <ul className="dx-legend-list">
+                    {SEVERITIES.filter(({ sev }) => findingsBySeverity[sev]).map(({ sev, color }) => (
+                      <li key={sev}>
+                        <i style={{ background: color }} />
+                        <span className="k">{sev}</span>
+                        <span className="v">{findingsBySeverity[sev]}</span>
+                        <span className="faint">{findings.filter((f) => f.severity === sev && f.validationStatus === "VALIDATED").length} validated</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          </article>
 
-      <div className="section-label">
-        <span className="section-label-num">02</span>
-        <span>THREAT POSTURE &amp; AUTHORIZATION LEDGER</span>
-      </div>
-
-      <div className="grid" style={{ gridTemplateColumns: "1.08fr 0.92fr" }}>
-        <div>
-          <div className="card">
-            <h2>
-              <span>Findings by severity</span>
-              <Link href="/findings" className="badge neutral">
-                ALL FINDINGS →
-              </Link>
-            </h2>
-            {findings.length === 0 ? (
-              <p className="empty">No findings yet.</p>
-            ) : (
-              <>
-                <div
-                  style={{
-                    display: "flex",
-                    height: 8,
-                    borderRadius: 999,
-                    overflow: "hidden",
-                    border: "1px solid var(--ink)",
-                    background: "var(--surface-2)",
-                    marginBottom: "0.85rem",
-                  }}
-                  title="Findings distribution by severity"
-                >
-                  {[
-                    { sev: "CRITICAL", color: "var(--red)" },
-                    { sev: "HIGH", color: "var(--orange)" },
-                    { sev: "MEDIUM", color: "var(--amber)" },
-                    { sev: "LOW", color: "var(--violet)" },
-                    { sev: "INFO", color: "var(--muted)" },
-                  ].map(({ sev, color }) => {
-                    const count = findingsBySeverity[sev] ?? 0;
-                    if (!count) return null;
-                    return (
-                      <span
-                        key={sev}
-                        style={{
-                          width: `${(count / Math.max(1, findings.length)) * 100}%`,
-                          background: color,
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-                <table className="data">
-                  <thead>
-                    <tr>
-                      <th>Severity</th>
-                      <th>Count</th>
-                      <th>Validated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
-                      .filter((s) => findingsBySeverity[s])
-                      .map((s) => (
-                        <tr key={s}>
-                          <td>
-                            <span className={`badge sev-${s}`}>{s}</span>
-                          </td>
-                          <td className="mono">{findingsBySeverity[s]}</td>
-                          <td className="mono">
-                            {findings.filter((f) => f.severity === s && f.validationStatus === "VALIDATED").length}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </>
-            )}
-
-            <h2 style={{ marginTop: "1.35rem" }}>Asset authorization ladder</h2>
-            <p className="hint" style={{ marginTop: 0 }}>
-              Discovery association ≠ ownership ≠ testing authorization. Only AUTHORIZED assets can receive active jobs.
-            </p>
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>Scope state</th>
-                  <th>Assets</th>
-                  <th style={{ width: "42%" }}>Proportion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {["AUTHORIZED", "OWNERSHIP_VERIFIED", "ASSOCIATED", "DISCOVERED", "DENIED"].map((s) => {
-                  const count = assetsByState[s] ?? 0;
-                  const pct = Math.round((count / Math.max(1, assets.length)) * 100);
-                  const barColor =
-                    s === "AUTHORIZED"
-                      ? "var(--green)"
-                      : s === "OWNERSHIP_VERIFIED"
-                        ? "var(--violet)"
-                        : s === "ASSOCIATED"
-                          ? "var(--amber)"
-                          : s === "DENIED"
-                            ? "var(--red)"
-                            : "var(--muted)";
+          <article className="dx-card" data-reveal="mask">
+            <div>
+              <div className="dx-card-head">
+                <h3>Authorization ladder</h3>
+                <Link href="/assets" className="dx-link">Inventory →</Link>
+              </div>
+              <p className="dx-note">Discovery ≠ ownership ≠ authorization. Only AUTHORIZED assets receive active jobs.</p>
+              <ul className="dx-ladder">
+                {SCOPE_STATES.map(({ s, color }) => {
+                  const n = assetsByState[s] ?? 0;
+                  const pct = Math.round((n / Math.max(1, assets.length)) * 100);
                   return (
-                    <tr key={s}>
-                      <td>
-                        <span className={`badge scope-${s}`}>{s.replace("_", " ")}</span>
-                      </td>
-                      <td className="mono">{count}</td>
-                      <td>
-                        <div className="row" style={{ gap: "0.45rem" }}>
-                          <div
-                            style={{
-                              flex: 1,
-                              height: 7,
-                              borderRadius: 999,
-                              background: "var(--surface-2)",
-                              border: "1px solid var(--border-ink)",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div style={{ width: `${pct}%`, height: "100%", background: barColor }} />
-                          </div>
-                          <span className="mono faint" style={{ fontSize: "0.68rem", width: 32, textAlign: "right" }}>
-                            {pct}%
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
+                    <li key={s}>
+                      <span className="k">{s.replace("_", " ")}</span>
+                      <span className="bar"><span style={{ width: `${pct}%`, background: color }} /></span>
+                      <span className="v">{n}</span>
+                    </li>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="card">
-            <h2>
-              <span>Recent scope &amp; surface changes</span>
-              <Link href="/assets" className="badge neutral">
-                INVENTORY →
-              </Link>
-            </h2>
-            {recentChanges.length === 0 ? (
-              <p className="hint">No changes detected — snapshot assets or import schemas to build the feed.</p>
-            ) : (
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Change</th>
-                    <th>Before → After</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentChanges.map((c) => (
-                    <tr key={c.id}>
-                      <td className="faint" style={{ fontSize: "0.72rem", whiteSpace: "nowrap" }}>
-                        {c.observedAt.toISOString().slice(0, 16).replace("T", " ")}
-                      </td>
-                      <td>
-                        <span className="badge info">{c.diffKind.replace("_", " ")}</span>
-                      </td>
-                      <td className="mono" style={{ fontSize: "0.72rem" }}>
-                        <code className="inline">{c.beforeJson.slice(0, 42)}</code> →{" "}
-                        <code className="inline">{c.afterJson.slice(0, 42)}</code>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+              </ul>
+            </div>
+          </article>
         </div>
+      </section>
 
-        <div>
-          <div className="card">
-            <h2>
-              <span>Campaign job status</span>
-              <Link href="/campaigns" className="badge neutral">
-                QUEUE →
+      {/* ------------------------------------------------------------ 03 lifecycle */}
+      <section className="dx-section" aria-labelledby="dx-h3">
+        <header className="dx-head">
+          <p className="dx-kicker" data-reveal="up"><span>03</span> Evidence lifecycle</p>
+          <h2 id="dx-h3" className="dx-h2" data-reveal="up">Where every claim stands.</h2>
+        </header>
+        <div className="dx-track-wrap" data-reveal="up">
+          <svg className="dx-ecg" viewBox="0 0 1000 40" preserveAspectRatio="none" aria-hidden="true">
+            <path
+              pathLength={1}
+              style={{ strokeDashoffset: 1 - (livePlate + 1) / LIFECYCLE.length }}
+              d="M0 20 H60 l8 -14 l8 26 l8 -12 H200 l8 -14 l8 26 l8 -12 H340 l8 -14 l8 26 l8 -12 H480 l8 -14 l8 26 l8 -12 H620 l8 -14 l8 26 l8 -12 H760 l8 -14 l8 26 l8 -12 H900 l8 -14 l8 26 l8 -12 H1000"
+            />
+          </svg>
+          <ol className="dx-track">
+            {LIFECYCLE.map((s, i) => {
+              const n = findingsByStatus[s] ?? 0;
+              return (
+                <li key={s} className={`dx-step ${n > 0 ? "has" : ""}`}>
+                  <Link href={`/findings?status=${s}`}>
+                    <span className="dx-step-n">{String(i + 1).padStart(2, "0")}</span>
+                    <span className="dx-step-v">{n}</span>
+                    <span className="dx-step-k">{s}</span>
+                  </Link>
+                </li>
+              );
+            })}
+            <li className={`dx-step off ${offRampTotal > 0 ? "has" : ""}`}>
+              <Link href="/findings?status=FALSE_POSITIVE">
+                <span className="dx-step-n">↳</span>
+                <span className="dx-step-v">{offRampTotal}</span>
+                <span className="dx-step-k">Off-ramps</span>
               </Link>
-            </h2>
-            {jobs.length === 0 ? (
-              <p className="empty">No jobs yet.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------ 04 activity */}
+      <section className="dx-section" aria-labelledby="dx-h4">
+        <header className="dx-head">
+          <p className="dx-kicker" data-reveal="up"><span>04</span> Ledger</p>
+          <h2 id="dx-h4" className="dx-h2" data-reveal="up">Every decision, written down.</h2>
+        </header>
+        <div className="dx-split2 wide-left">
+          <div>
+            <div className="dx-card-head plain">
+              <h3>Recent audit activity</h3>
+              <Link href="/audit" className="dx-link">Full ledger →</Link>
+            </div>
+            {recentAudit.length === 0 ? (
+              <p className="dx-empty">The ledger is empty.</p>
             ) : (
-              <table className="data">
-                <thead>
-                  <tr>
-                    <th>Status</th>
-                    <th>Jobs</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(jobsByStatus).map(([s, n]) => (
-                    <tr key={s}>
-                      <td>
-                        <span
-                          className={`badge ${
-                            s === "SUCCEEDED"
-                              ? "ok"
-                              : s === "FAILED"
-                                ? "danger"
-                                : s === "RUNNING" || s === "QUEUED"
-                                  ? "info"
-                                  : "neutral"
-                          }`}
-                        >
-                          {s}
-                        </span>
-                      </td>
-                      <td className="mono">{n}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            <h2 style={{ marginTop: "1.4rem" }}>
-              <span>Recent audit activity</span>
-              <Link href="/audit" className="badge neutral">
-                FULL LEDGER →
-              </Link>
-            </h2>
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>Action</th>
-                  <th>Resource</th>
-                  <th>Decision</th>
-                </tr>
-              </thead>
-              <tbody>
+              <div className="dx-index">
                 {recentAudit.map((e) => (
-                  <tr key={e.id}>
-                    <td className="mono">{e.action}</td>
-                    <td className="mono">{e.resourceId.slice(0, 18)}</td>
-                    <td>
-                      <span
-                        className={`badge ${
-                          e.decision === "DENY" ? "danger" : e.decision === "ALLOW" ? "ok" : "neutral"
-                        }`}
-                      >
-                        {e.decision}
-                      </span>
-                    </td>
-                  </tr>
+                  <IndexRow key={e.id} href="/audit">
+                    <span className="dx-row-t mono">{e.action}</span>
+                    <span className="dx-row-d mono">{e.resourceType} · {e.resourceId.slice(0, 18)}</span>
+                    <span className={`dx-row-tag ${e.decision === "DENY" ? "deny" : e.decision === "ALLOW" ? "allow" : ""}`}>{e.decision}</span>
+                    <span className="dx-row-time mono">{e.timestamp.toISOString().slice(11, 16)}</span>
+                  </IndexRow>
                 ))}
-              </tbody>
-            </table>
-            <Link href="/audit" className="row" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
-              View full audit log →
-            </Link>
+              </div>
+            )}
           </div>
 
-          {/* Signature Component: Live Terminal Panel */}
-          <div className="terminal-panel">
-            <div className="terminal-header">
-              <span className="terminal-dots" aria-hidden="true">
-                <span className="terminal-dot coral" />
-                <span className="terminal-dot amber" />
-                <span className="terminal-dot mint" />
-              </span>
-              <span className="terminal-title">policy-gateway.stream // live</span>
-            </div>
-            <div>
+          <div className="dx-stack-col">
+            <article className="dx-card" data-reveal="mask">
               <div>
-                <span style={{ color: "var(--mint)" }}>[GATEWAY]</span> active_programs={programs.length} · authorized_assets=
-                {assetsByState.AUTHORIZED ?? 0} · gateway_denials={egressDenies}
-              </div>
-              {recentAudit[0] && (
-                <div>
-                  <span style={{ color: "var(--coral)" }}>[AUDIT_HEAD]</span> {recentAudit[0].action} on{" "}
-                  {recentAudit[0].resourceId.slice(0, 16)} → {recentAudit[0].decision} (sha256:{recentAudit[0].digest.slice(0, 12)}…)
+                <div className="dx-card-head">
+                  <h3>Job queue</h3>
+                  <Link href="/campaigns" className="dx-link">Campaigns →</Link>
                 </div>
-              )}
-              <div style={{ color: "#9da69b" }}>
-                Awaiting policy-pinned job dispatch
-                <span className="terminal-cursor" />
+                {jobs.length === 0 ? (
+                  <p className="dx-empty">No jobs yet.</p>
+                ) : (
+                  <ul className="dx-kv">
+                    {Object.entries(jobsByStatus).map(([s, n]) => (
+                      <li key={s}>
+                        <span className={`dot ${s === "SUCCEEDED" ? "ok" : s === "FAILED" ? "bad" : "busy"}`} />
+                        <span className="k">{s}</span>
+                        <span className="v">{n}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </article>
+
+            <article className="dx-card" data-reveal="mask">
+              <div>
+                <div className="dx-card-head">
+                  <h3>Surface changes</h3>
+                  <Link href="/assets" className="dx-link">Inventory →</Link>
+                </div>
+                {recentChanges.length === 0 ? (
+                  <p className="dx-empty">No changes detected — snapshot assets or import schemas to build the feed.</p>
+                ) : (
+                  <ul className="dx-kv">
+                    {recentChanges.map((c) => (
+                      <li key={c.id}>
+                        <span className="dot busy" />
+                        <span className="k">{c.diffKind.replace("_", " ")}</span>
+                        <span className="v faint">{c.observedAt.toISOString().slice(5, 16).replace("T", " ")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </article>
+
+            <div className="terminal-panel" data-reveal="up">
+              <div className="terminal-header">
+                <span className="terminal-dots" aria-hidden="true">
+                  <span className="terminal-dot coral" />
+                  <span className="terminal-dot amber" />
+                  <span className="terminal-dot mint" />
+                </span>
+                <span className="terminal-title">policy-gateway.stream // live</span>
+              </div>
+              <div>
+                <div>
+                  <span style={{ color: "var(--mint)" }}>[GATEWAY]</span> programs={programs.length} · authorized={authorized} · denials={egressDenies}
+                </div>
+                {recentAudit[0] && (
+                  <div>
+                    <span style={{ color: "var(--coral)" }}>[AUDIT_HEAD]</span> {recentAudit[0].action} → {recentAudit[0].decision} (sha256:
+                    {recentAudit[0].digest.slice(0, 12)}…)
+                  </div>
+                )}
+                <div style={{ color: "#9da69b" }}>
+                  {stops ? "Emergency stop engaged — dispatch blocked" : "Awaiting policy-pinned job dispatch"}
+                  <span className="terminal-cursor" />
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </RevealScope>
   );
 }

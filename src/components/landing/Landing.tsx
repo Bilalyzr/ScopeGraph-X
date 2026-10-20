@@ -2,8 +2,9 @@
 
 import "./landing.css";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ScopeScene, CHAPTERS, type Frame } from "./ScopeScene";
+import { Split, Magnetic } from "./motion";
 import { matchScope } from "@/lib/policy/matcher";
 import type { ScopeRules } from "@/lib/policy/rules";
 
@@ -60,41 +61,6 @@ const ROLES = ["RESEARCHER", "APPSEC LEAD", "VALIDATOR", "PROGRAM OWNER", "TENAN
 /* -------------------------------------------------------------------------- */
 /* Small primitives                                                           */
 /* -------------------------------------------------------------------------- */
-
-function Split({ text, className = "" }: { text: string; className?: string }) {
-  const words = text.split(" ");
-  return (
-    <span className={`lx-split ${className}`} aria-label={text}>
-      {words.map((w, i) => (
-        <span className="w" key={i} aria-hidden="true">
-          <span style={{ ["--i" as string]: i }}>{w}&nbsp;</span>
-        </span>
-      ))}
-    </span>
-  );
-}
-
-/** Magnetic hover with a liquid fill that blooms from the pointer position. */
-function Magnetic({ children, strength = 0.32 }: { children: ReactNode; strength?: number }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const move = (e: ReactPointerEvent<HTMLSpanElement>) => {
-    const el = ref.current;
-    if (!el || e.pointerType !== "mouse") return;
-    const r = el.getBoundingClientRect();
-    const x = e.clientX - r.left, y = e.clientY - r.top;
-    el.style.setProperty("--mx", `${x}px`);
-    el.style.setProperty("--my", `${y}px`);
-    el.style.transform = `translate3d(${(x - r.width / 2) * strength}px, ${(y - r.height / 2) * strength}px, 0)`;
-  };
-  const leave = () => {
-    if (ref.current) ref.current.style.transform = "";
-  };
-  return (
-    <span ref={ref} className="lx-mag" onPointerMove={move} onPointerLeave={leave}>
-      {children}
-    </span>
-  );
-}
 
 function Cursor() {
   const ring = useRef<HTMLDivElement>(null);
