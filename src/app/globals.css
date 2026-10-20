@@ -1713,3 +1713,45 @@ code.inline {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- login finetune ---------- */
+.login-password-wrap { position: relative; display: block; }
+.login-password-wrap input { padding-right: 2.6rem; }
+.login-eye {
+  position: absolute; right: 0.45rem; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; cursor: pointer; font-size: 0.95rem;
+  padding: 0.25rem 0.35rem; border-radius: 6px; line-height: 1; color: var(--text-muted);
+}
+.login-eye:hover { color: var(--text); background: var(--bg-overlay, rgba(127,127,127,.12)); }
+
+.login-demo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.9rem 0 0.2rem; }
+.login-demo-label { font-size: 0.62rem; letter-spacing: 0.09em; color: var(--text-faint); margin-right: 0.15rem; }
+.login-demo-chip {
+  font: inherit; font-size: 0.7rem; font-weight: 600; cursor: pointer;
+  border: 1px dashed var(--border-strong, #8884); border-radius: 999px;
+  background: transparent; color: var(--text-muted); padding: 0.18rem 0.6rem;
+}
+.login-demo-chip:hover { color: var(--text); border-color: var(--text-muted); }
+.login-demo-chip:disabled { opacity: 0.5; cursor: default; }
+
+.login-mfa-input {
+  font-family: var(--mono, monospace); font-size: 1.45rem !important;
+  letter-spacing: 0.55em; text-align: center; padding: 0.55rem 0 0.55rem 0.55em !important;
+}
+
+.login-spinner {
+  width: 0.85rem; height: 0.85rem; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  display: inline-block; animation: login-spin 0.7s linear infinite;
+}
+@keyframes login-spin { to { transform: rotate(360deg); } }
+
+.login-error-shake { animation: login-shake 0.3s ease; }
+@keyframes login-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-spinner, .login-error-shake { animation: none; }
+}
