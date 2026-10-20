@@ -13,6 +13,11 @@ export async function triggerEmergencyStop(input: {
   reason: string;
   createdBy: string;
 }) {
+  if (input.scope === "PROGRAM" && input.programId && input.orgId) {
+    const prog = await db.program.findFirst({ where: { id: input.programId, orgId: input.orgId } });
+    if (!prog) throw new Error("PROGRAM_NOT_FOUND_IN_ORG");
+  }
+
   const stop = await db.emergencyStop.create({
     data: {
       id: newId("ems"),
@@ -28,7 +33,9 @@ export async function triggerEmergencyStop(input: {
   const affectedCampaigns = await db.campaign.findMany({
     where: {
       state: "RUNNING",
-      ...(input.scope === "PROGRAM" ? { programId: input.programId! } : {}),
+      ...(input.scope === "PROGRAM"
+        ? { programId: input.programId!, ...(input.orgId ? { orgId: input.orgId } : {}) }
+        : {}),
       ...(input.scope === "ORG" ? { program: { orgId: input.orgId! } } : {}),
     },
   });
@@ -58,8 +65,11 @@ export async function triggerEmergencyStop(input: {
   });
   if (input.orgId) {
     await dispatchWebhookEvent(input.orgId, "safety.emergency_stop", {
-      stop_id: stop.id, scope: input.scope, reason: input.reason,
-      campaigns_stopped: affectedCampaigns.length, jobs_cancelled: cancelledJobs,
+      stop_id: stop.id,
+      scope: input.scope,
+      reason: input.reason,
+      campaigns_stopped: affectedCampaigns.length,
+      jobs_cancelled: cancelledJobs,
     });
   }
 
@@ -108,8 +118,11 @@ export async function revokeScopeVersion(scopeVersionId: string, actorId: string
     });
   }
 
+  const program = await db.program.findUnique({ where: { id: policy.programId } });
+  const orgId = program!.orgId;
+
   await audit({
-    orgId: (await db.program.findUnique({ where: { id: policy.programId } }))!.orgId,
+    orgId,
     actorId,
     action: "policy.revoked",
     resourceType: "ScopeVersion",
@@ -118,9 +131,12 @@ export async function revokeScopeVersion(scopeVersionId: string, actorId: string
     reason,
     metadata: { version: policy.version, campaigns: affectedCampaigns.length, cancelledJobs },
   });
-  await dispatchWebhookEvent((await db.program.findUnique({ where: { id: policy.programId } }))!.orgId, "policy.revoked", {
-    scope_id: scopeVersionId, version: policy.version, reason,
-    campaigns_stopped: affectedCampaigns.length, jobs_cancelled: cancelledJobs,
+  await dispatchWebhookEvent(orgId, "policy.revoked", {
+    scope_id: scopeVersionId,
+    version: policy.version,
+    reason,
+    campaigns_stopped: affectedCampaigns.length,
+    jobs_cancelled: cancelledJobs,
   });
 
   return { policy, campaigns: affectedCampaigns.length, cancelledJobs };

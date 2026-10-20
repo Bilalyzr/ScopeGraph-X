@@ -12,9 +12,7 @@ import { classifyIp, isBlockedAddress, isValidHostname, simulatedResolve } from 
 // EGRESS IS ALWAYS SIMULATED IN THIS BUILD: the gateway decides and logs; the
 // dev executor performs no real network I/O (see docs/security-model.md).
 
-export type EgressDecision =
-  | "ALLOW"
-  | "DENY";
+export type EgressDecision = "ALLOW" | "DENY";
 
 export interface EgressRequest {
   orgId: string;
@@ -51,9 +49,16 @@ export async function activeScopeVersion(programId: string) {
   });
 }
 
-async function emergencyStopActive(orgId: string, programId: string): Promise<string | null> {
+export async function emergencyStopActive(orgId: string, programId: string): Promise<string | null> {
   const stops = await db.emergencyStop.findMany({
-    where: { active: true, OR: [{ scope: "GLOBAL" }, { scope: "ORG", orgId }, { scope: "PROGRAM", programId }] },
+    where: {
+      active: true,
+      OR: [
+        { scope: "GLOBAL" },
+        { scope: "ORG", orgId },
+        { scope: "PROGRAM", programId, orgId },
+      ],
+    },
   });
   if (stops.length === 0) return null;
   return stops[0].id;
@@ -107,20 +112,26 @@ export async function authorizeEgress(req: EgressRequest): Promise<EgressResult>
   if (!policy) return deny("No active policy version", "NO_ACTIVE_POLICY");
 
   // 4. Campaign binding: campaign must be RUNNING and pinned to this exact policy version.
+  let campaignBudget: { max_requests?: number; max_rps?: number; max_concurrency?: number } | null = null;
   if (req.campaignId) {
     const campaign = await db.campaign.findFirst({
-      where: { id: req.campaignId, programId: req.programId },
+      where: { id: req.campaignId, programId: req.programId, orgId: req.orgId },
     });
     if (!campaign) return deny("Campaign not found for program", "NO_CAMPAIGN");
     if (campaign.state !== "RUNNING") return deny(`Campaign state is ${campaign.state}`, "CAMPAIGN_NOT_RUNNING");
     if (campaign.policyVersionId !== policy.id) {
       return deny("Campaign references a superseded policy version", "POLICY_REVOKED");
     }
+    try {
+      campaignBudget = JSON.parse(campaign.budgetJson);
+    } catch {
+      campaignBudget = null;
+    }
   }
 
   // 5. Active operations require the host to be an AUTHORIZED asset of this program.
   const asset = await db.asset.findFirst({
-    where: { programId: req.programId, canonicalLocator: hostKey(req.host) },
+    where: { programId: req.programId, orgId: req.orgId, canonicalLocator: hostKey(req.host) },
   });
   if (!asset) return deny("Host is not a registered asset of this program", "ASSET_NOT_IN_PROGRAM");
   if (asset.scopeState !== "AUTHORIZED") {
@@ -144,11 +155,15 @@ export async function authorizeEgress(req: EgressRequest): Promise<EgressResult>
     return deny(match.matchedDeny ? `Deny rule: ${match.matchedDeny.reason}` : "No allow rule matches", "OUT_OF_SCOPE");
   }
 
-  // 9. Durable request budget.
+  // 9. Durable request budget (enforces tighter of policy budget and campaign budget).
   if (req.campaignId) {
+    const maxRequests = Math.min(rules.budgets.max_requests, campaignBudget?.max_requests ?? rules.budgets.max_requests);
+    const maxRps = Math.min(rules.budgets.max_rps, campaignBudget?.max_rps ?? rules.budgets.max_rps);
+    const maxConcurrency = Math.min(rules.budgets.max_concurrency, campaignBudget?.max_concurrency ?? rules.budgets.max_concurrency);
+
     const used = await campaignRequestCount(req.campaignId);
-    if (used >= rules.budgets.max_requests) {
-      return deny(`Request budget exhausted (${used}/${rules.budgets.max_requests})`, "BUDGET_EXHAUSTED");
+    if (used >= maxRequests) {
+      return deny(`Request budget exhausted (${used}/${maxRequests})`, "BUDGET_EXHAUSTED");
     }
     // In-process rate limit (single-node dev; Redis-backed in production).
     const now = Date.now();
@@ -157,9 +172,9 @@ export async function authorizeEgress(req: EgressRequest): Promise<EgressResult>
       st.windowStart = now;
       st.count = 0;
     }
-    if (st.count >= rules.budgets.max_rps) return deny(`Rate limit ${rules.budgets.max_rps} rps exceeded`, "RATE_LIMIT");
+    if (st.count >= maxRps) return deny(`Rate limit ${maxRps} rps exceeded`, "RATE_LIMIT");
     const conc = concurrency.get(req.campaignId) ?? 0;
-    if (conc >= rules.budgets.max_concurrency) return deny(`Concurrency limit ${rules.budgets.max_concurrency} exceeded`, "CONCURRENCY_LIMIT");
+    if (conc >= maxConcurrency) return deny(`Concurrency limit ${maxConcurrency} exceeded`, "CONCURRENCY_LIMIT");
     st.count += 1;
     rateState.set(req.campaignId, st);
   }

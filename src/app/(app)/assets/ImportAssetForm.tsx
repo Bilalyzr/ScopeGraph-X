@@ -49,7 +49,7 @@ export function ImportAssetForm({ programs }: { programs: Array<{ id: string; na
           </select>
         </label>
         <label className="field">Canonical locator (host/domain)
-          <input required minLength={3} value={form.canonical_locator} onChange={(e) => setForm({ ...form, canonical_locator: e.target.value })} placeholder="staging.demo-target.test" />
+          <input required minLength={3} value={form.canonical_locator} onChange={(e) => setForm({ ...form, canonical_locator: e.target.value })} placeholder="api.organization.com" />
         </label>
       </div>
       <div className="form-row">

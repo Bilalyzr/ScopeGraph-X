@@ -20,10 +20,21 @@ export default async function ReportsPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: "1.2rem" }}>Reports & exports</h1>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <div className="row spread" style={{ marginBottom: "0.4rem" }}>
+        <div>
+          <div className="mono-label">REDACTED ARTIFACTS // CONTENT-ADDRESSED EXPORTS</div>
+          <h1 style={{ margin: "0.15rem 0 0" }}>Reports &amp; exports</h1>
+        </div>
+        <span className="badge accent">{exports.length} EXPORT BUNDLES</span>
+      </div>
+      <p className="muted" style={{ marginTop: "0.25rem" }}>
         Sanitized HTML / PDF / JSON exports from validated, reviewed findings. Every claim links evidence; secrets are redacted before storage and export. Reports are never auto-submitted to third-party programs.
       </p>
+
+      <div className="section-label">
+        <span className="section-label-num">01</span>
+        <span>EXPORT COMPILER</span>
+      </div>
 
       {canWrite ? (
         <GenerateReportForm programs={programs.map((p) => ({ id: p.id, name: p.name }))} />
@@ -31,19 +42,44 @@ export default async function ReportsPage() {
         <p className="empty">Your role cannot generate reports.</p>
       )}
 
+      <div className="section-label">
+        <span className="section-label-num">02</span>
+        <span>READINESS MATRIX &amp; ARCHIVAL LEDGER</span>
+      </div>
+
       <div className="grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <div className="card">
           <h2>Reportable findings by program</h2>
           <table className="data">
-            <thead><tr><th>Program</th><th>Review-ready</th><th>Candidates (excluded)</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Program</th>
+                <th>Review-ready</th>
+                <th>Candidates (excluded)</th>
+                <th>Export readiness</th>
+              </tr>
+            </thead>
             <tbody>
               {programs.map((p) => {
                 const pf = findings.filter((f) => f.programId === p.id);
+                const readyCount = pf.filter((f) => ["REVIEWED", "REPORTED", "ACCEPTED"].includes(f.status)).length;
+                const candCount = pf.filter((f) => f.status === "PROPOSED").length;
                 return (
                   <tr key={p.id}>
-                    <td>{p.name}</td>
-                    <td>{pf.filter((f) => ["REVIEWED", "REPORTED", "ACCEPTED"].includes(f.status)).length}</td>
-                    <td>{pf.filter((f) => f.status === "PROPOSED").length}</td>
+                    <td>
+                      <strong>{p.name}</strong>
+                    </td>
+                    <td className="mono">{readyCount}</td>
+                    <td className="mono">{candCount}</td>
+                    <td>
+                      {candCount > 0 ? (
+                        <span className="badge warn">BLOCKED ({candCount} UNREVIEWED)</span>
+                      ) : readyCount > 0 ? (
+                        <span className="badge ok">READY TO EXPORT</span>
+                      ) : (
+                        <span className="badge neutral">NO REVIEWED FINDINGS</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -53,15 +89,29 @@ export default async function ReportsPage() {
         </div>
         <div className="card">
           <h2>Recent export records (content-addressed)</h2>
-          {exports.length === 0 ? <p className="empty">No exports generated yet.</p> : (
+          {exports.length === 0 ? (
+            <p className="empty">No exports generated yet.</p>
+          ) : (
             <table className="data">
-              <thead><tr><th>Evidence</th><th>sha256</th><th>Generated</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Evidence</th>
+                  <th>sha256</th>
+                  <th>Generated</th>
+                </tr>
+              </thead>
               <tbody>
                 {exports.map((e) => (
                   <tr key={e.id}>
-                    <td className="mono" style={{ fontSize: "0.72rem" }}>{e.id}</td>
-                    <td className="mono" style={{ fontSize: "0.72rem" }}>{e.sha256.slice(0, 20)}…</td>
-                    <td className="faint" style={{ fontSize: "0.75rem" }}>{e.collectedAt.toISOString().slice(0, 16).replace("T", " ")}</td>
+                    <td className="mono" style={{ fontSize: "0.72rem" }}>
+                      {e.id}
+                    </td>
+                    <td className="mono" style={{ fontSize: "0.72rem" }}>
+                      {e.sha256.slice(0, 20)}…
+                    </td>
+                    <td className="faint" style={{ fontSize: "0.75rem" }}>
+                      {e.collectedAt.toISOString().slice(0, 16).replace("T", " ")}
+                    </td>
                   </tr>
                 ))}
               </tbody>

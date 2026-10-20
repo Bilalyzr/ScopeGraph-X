@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 
-export default function MfaSection() {
-  const [state, setState] = useState<"idle" | "enrolling" | "enabled-unknown">("enabled-unknown");
+export default function MfaSection({ initialEnabled = false }: { initialEnabled?: boolean }) {
+  const [enabled, setEnabled] = useState(initialEnabled);
+  const [state, setState] = useState<"idle" | "enrolling">("idle");
   const [secret, setSecret] = useState<string | null>(null);
   const [otpauth, setOtpauth] = useState<string | null>(null);
   const [code, setCode] = useState("");
@@ -44,6 +45,7 @@ export default function MfaSection() {
         return;
       }
       setState("idle");
+      setEnabled(true);
       setSecret(null);
       setMsg({ kind: "ok", text: "MFA is now enabled on this account. You will be asked for a code at every sign-in." });
     } finally {
@@ -66,6 +68,7 @@ export default function MfaSection() {
         return;
       }
       setPassword("");
+      setEnabled(false);
       setMsg({ kind: "ok", text: "MFA disabled." });
     } finally {
       setBusy(false);
@@ -74,7 +77,10 @@ export default function MfaSection() {
 
   return (
     <div className="card">
-      <h2>Multi-factor authentication (TOTP)</h2>
+      <h2>
+        <span>Multi-factor authentication (TOTP)</span>
+        <span className={`badge ${enabled ? "ok" : "neutral"}`}>{enabled ? "ENABLED" : "NOT ENROLLED"}</span>
+      </h2>
       {state === "enrolling" && secret ? (
         <div>
           <p className="hint" style={{ marginTop: 0 }}>
@@ -89,21 +95,26 @@ export default function MfaSection() {
             {busy ? "Verifying…" : "Confirm & enable"}
           </button>
         </div>
+      ) : enabled ? (
+        <div>
+          <p className="hint" style={{ marginTop: 0 }}>
+            TOTP second factor (RFC 6238) is active on this account. Enter your account password to disable or rotate MFA.
+          </p>
+          <label className="field">Confirm with account password
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+          </label>
+          <button className="btn danger" onClick={disable} disabled={busy || password.length === 0}>
+            {busy ? "…" : "Disable MFA"}
+          </button>
+        </div>
       ) : (
         <div>
           <p className="hint" style={{ marginTop: 0 }}>
-            TOTP second factor (RFC 6238). Secrets are stored encrypted; enabling requires a valid code.
+            TOTP second factor (RFC 6238). Secrets are stored encrypted; enabling requires a valid 6-digit code.
           </p>
           <button className="btn primary" onClick={startEnroll} disabled={busy}>
             {busy ? "…" : "Enroll authenticator"}
           </button>
-          <div style={{ borderTop: "1px solid var(--border)", marginTop: "1rem", paddingTop: "1rem" }}>
-            <h3 style={{ fontSize: "0.85rem", margin: "0 0 0.5rem" }}>Disable MFA</h3>
-            <label className="field">Confirm with account password
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-            </label>
-            <button className="btn danger" onClick={disable} disabled={busy || password.length === 0}>Disable MFA</button>
-          </div>
         </div>
       )}
       {msg && <div className={`msg ${msg.kind}`} role="alert">{msg.text}</div>}

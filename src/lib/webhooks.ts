@@ -1,8 +1,11 @@
-import { randomBytes } from "crypto";
+import { randomBytes, timingSafeEqual } from "crypto";
+import { isIP } from "net";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/ids";
 import { audit } from "@/lib/audit";
 import { hmacSha256Hex, sealJson, unsealJson } from "@/lib/crypto";
+import { ApiError } from "@/lib/api";
+import { isBlockedAddress, isValidHostname } from "@/lib/policy/ipguard";
 
 // Signed webhook delivery (FR-ENT-02): HMAC-SHA256 signatures with timestamp +
 // nonce for replay protection, persisted delivery records with exponential
@@ -17,6 +20,32 @@ export type WebhookEventType = (typeof WEBHOOK_EVENTS)[number];
 export interface WebhookTransport {
   name: string;
   deliver(url: string, body: string, headers: Record<string, string>): Promise<{ ok: boolean; response: string }>;
+}
+
+export function validateWebhookUrl(rawUrl: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new ApiError(422, "INVALID_WEBHOOK_URL", "Invalid webhook URL");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new ApiError(422, "INVALID_WEBHOOK_URL", "Webhook URL must use http or https");
+  }
+  const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (
+    !isValidHostname(host) ||
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal")
+  ) {
+    throw new ApiError(422, "INVALID_WEBHOOK_URL", "Webhook destination host is not permitted");
+  }
+  if (isIP(host) !== 0 && isBlockedAddress(host)) {
+    throw new ApiError(422, "INVALID_WEBHOOK_URL", "Webhook destination IP is in a blocked range");
+  }
+  return parsed;
 }
 
 /** Default dev transport: records the delivery, performs no network I/O. */
@@ -37,7 +66,13 @@ class RecordedTransport implements WebhookTransport {
 class HttpTransport implements WebhookTransport {
   name = "http";
   async deliver(url: string, body: string, headers: Record<string, string>) {
-    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body });
+    validateWebhookUrl(url);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body,
+      redirect: "error",
+    });
     return { ok: res.ok, response: `${res.status} ${res.statusText}` };
   }
 }
@@ -55,6 +90,7 @@ export async function createWebhookEndpoint(input: {
   events: string[];
   actorId: string;
 }) {
+  validateWebhookUrl(input.url);
   const secret = randomBytes(32).toString("hex");
   const endpoint = await db.webhookEndpoint.create({
     data: {
@@ -97,7 +133,11 @@ export function verifyWebhookSignature(input: {
   const skew = Math.abs(Date.now() - input.timestampMs);
   if (skew > (input.maxSkewMs ?? 5 * 60_000)) return { valid: false, reason: "TIMESTAMP_OUT_OF_WINDOW" };
   const expected = signPayload(input.secret, input.timestampMs, input.nonce, input.body);
-  if (expected !== input.signature) return { valid: false, reason: "SIGNATURE_MISMATCH" };
+  const expectedBuf = Buffer.from(expected, "utf8");
+  const sigBuf = Buffer.from(input.signature, "utf8");
+  if (expectedBuf.length !== sigBuf.length || !timingSafeEqual(expectedBuf, sigBuf)) {
+    return { valid: false, reason: "SIGNATURE_MISMATCH" };
+  }
   return { valid: true };
 }
 

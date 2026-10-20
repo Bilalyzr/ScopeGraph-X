@@ -85,14 +85,23 @@ export function CreateCampaignForm({
             <option value="PASSIVE_THEN_APPROVED_ACTIVE">Passive + approved active (policy-gated, simulated)</option>
           </select>
         </label>
-        <label className="field">Budget
-          <div className="row">
-            <input type="number" min={1} value={form.max_requests} onChange={(e) => setForm({ ...form, max_requests: Number(e.target.value) })} aria-label="max requests" />
-            <input type="number" min={0.5} step={0.5} value={form.max_rps} onChange={(e) => setForm({ ...form, max_rps: Number(e.target.value) })} aria-label="max rps" />
-            <input type="number" min={1} value={form.max_concurrency} onChange={(e) => setForm({ ...form, max_concurrency: Number(e.target.value) })} aria-label="max concurrency" />
+        <div className="field">
+          <div>Budget</div>
+          <div className="row" style={{ marginTop: "0.32rem", alignItems: "flex-start" }}>
+            <div style={{ flex: 1 }}>
+              <input type="number" min={1} value={form.max_requests} onChange={(e) => setForm({ ...form, max_requests: Number(e.target.value) })} aria-label="max requests" />
+              <div className="mono-label" style={{ fontSize: "0.6rem", marginTop: "0.2rem" }}>MAX REQUESTS</div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <input type="number" min={0.5} step={0.5} value={form.max_rps} onChange={(e) => setForm({ ...form, max_rps: Number(e.target.value) })} aria-label="max rps" />
+              <div className="mono-label" style={{ fontSize: "0.6rem", marginTop: "0.2rem" }}>MAX RPS</div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <input type="number" min={1} value={form.max_concurrency} onChange={(e) => setForm({ ...form, max_concurrency: Number(e.target.value) })} aria-label="max concurrency" />
+              <div className="mono-label" style={{ fontSize: "0.6rem", marginTop: "0.2rem" }}>CONCURRENCY</div>
+            </div>
           </div>
-          <div className="hint">requests · requests/sec · concurrency</div>
-        </label>
+        </div>
       </div>
       {!activePolicy && <div className="msg error">This program has no ACTIVE policy version.</div>}
       {error && <div className="msg error" role="alert">{error}</div>}

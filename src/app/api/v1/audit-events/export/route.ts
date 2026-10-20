@@ -7,8 +7,9 @@ import { handleApiError, requireContext } from "@/lib/api";
 // The export action itself is audited.
 
 function csvEscape(v: string): string {
-  if (/[",\n\r]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
-  return v;
+  const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+  if (/[",\n\r]/.test(safe)) return `"${safe.replace(/"/g, '""')}"`;
+  return safe;
 }
 
 export async function GET(req: NextRequest) {

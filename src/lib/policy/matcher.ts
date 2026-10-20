@@ -25,7 +25,7 @@ function hostMatches(pattern: string, host: string): boolean {
 }
 
 function pathMatches(prefixes: string[], path: string): boolean {
-  return prefixes.some((p) => p === "/" || path === p || path.startsWith(p.endsWith("/") ? p : p + "/") || path.startsWith(p));
+  return prefixes.some((p) => p === "/" || path === p || path.startsWith(p.endsWith("/") ? p : p + "/"));
 }
 
 function allowMatches(rule: { host: string; paths: string[]; methods: string[] }, t: MatchTarget): boolean {

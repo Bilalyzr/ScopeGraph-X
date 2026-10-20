@@ -40,13 +40,24 @@ function classifyV4(ip: string): AddressClass {
 
 function classifyV6(ip: string): AddressClass {
   const lower = ip.toLowerCase();
-  if (lower === "::1" || lower === "::") return "LOOPBACK";
+  if (lower === "::1" || lower === "::" || /^(0+:){7}0*1$/.test(lower) || /^(0+:){7}0+$/.test(lower)) {
+    return "LOOPBACK";
+  }
   if (lower.startsWith("fe80:")) return "LINK_LOCAL";
   if (lower.startsWith("fc") || lower.startsWith("fd")) return "UNIQUE_LOCAL";
   if (lower.startsWith("ff")) return "MULTICAST";
-  if (lower.startsWith("::ffff:")) {
-    const v4 = lower.split(":").pop()!;
-    return classifyV4(v4);
+  if (lower.startsWith("::ffff:") || /^(0+:){5}ffff:/.test(lower)) {
+    const tail = lower.replace(/^.*ffff:/, "");
+    if (tail.includes(".")) return classifyV4(tail);
+    const parts = tail.split(":");
+    if (parts.length === 2) {
+      const hi = parseInt(parts[0], 16);
+      const lo = parseInt(parts[1], 16);
+      if (!Number.isNaN(hi) && !Number.isNaN(lo)) {
+        return classifyV4(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`);
+      }
+    }
+    return "RESERVED";
   }
   if (lower.startsWith("2001:db8")) return "RESERVED"; // documentation
   if (lower.startsWith("64:ff9b")) return "RESERVED";

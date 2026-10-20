@@ -3,25 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-const SAMPLE = JSON.stringify(
-  {
-    openapi: "3.1.0",
-    info: { title: "demo-orders-api", version: "1.4.0" },
-    paths: {
-      "/v1/orders": { get: { operationId: "listOrders" }, post: { operationId: "createOrder" } },
-      "/v1/orders/{id}": { get: { operationId: "getOrder" } },
-      "/v1/admin/export": { post: { operationId: "exportAll" } },
-    },
-  },
-  null,
-  2
-);
-
 export function OpenApiImportForm({ programId, assets }: { programId: string; assets: Array<{ id: string; locator: string }> }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [assetId, setAssetId] = useState(assets[0]?.id ?? "");
-  const [doc, setDoc] = useState(SAMPLE);
+  const [doc, setDoc] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,12 +41,18 @@ export function OpenApiImportForm({ programId, assets }: { programId: string; as
   if (assets.length === 0) return null;
 
   return (
-    <div style={{ borderTop: "1px solid var(--border)", paddingTop: "1rem", marginTop: "0.5rem" }}>
+    <div>
       {!open ? (
-        <button className="btn" onClick={() => setOpen(true)}>⇪ Import OpenAPI schema (endpoints)</button>
+        <div>
+          <h2>OpenAPI / Swagger ingestion</h2>
+          <p className="hint" style={{ marginTop: 0 }}>
+            Normalize API route templates locally into canonical endpoints and emit surface diff events.
+          </p>
+          <button className="btn" onClick={() => setOpen(true)}>⇪ Import OpenAPI schema (endpoints)</button>
+        </div>
       ) : (
         <form onSubmit={submit}>
-          <h2 style={{ fontSize: "0.95rem" }}>Import OpenAPI / Swagger document</h2>
+          <h2>Import OpenAPI / Swagger document</h2>
           <label className="field">Target asset
             <select value={assetId} onChange={(e) => setAssetId(e.target.value)}>
               {assets.map((a) => <option key={a.id} value={a.id}>{a.locator}</option>)}

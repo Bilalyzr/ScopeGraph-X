@@ -4,11 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 const DEFAULT_RULES = {
-  allow: [
-    { host: "shop.demo-target.test", paths: ["/"], methods: ["GET"] },
-    { host: "api.demo-target.test", paths: ["/v1/orders", "/v1/users"], methods: ["GET", "POST"] },
-  ],
-  deny: [{ host: "admin.demo-target.test", reason: "Excluded by program policy" }],
+  allow: [],
+  deny: [],
   budgets: { max_requests: 500, max_rps: 2, max_concurrency: 2 },
   notes: "",
 };
@@ -17,7 +14,7 @@ export function ProposeScopeForm({ programId }: { programId: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [json, setJson] = useState(JSON.stringify(DEFAULT_RULES, null, 2));
-  const [note, setNote] = useState("Updated scope from contract amendment");
+  const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -52,12 +49,20 @@ export function ProposeScopeForm({ programId }: { programId: string }) {
   }
 
   if (!open) {
-    return <button className="btn" onClick={() => setOpen(true)}>+ Propose scope version</button>;
+    return (
+      <div>
+        <h2>Scope policy compiler</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Draft a new versioned allow/deny/budget rule set. Requires separate human approval before activation.
+        </p>
+        <button className="btn primary" onClick={() => setOpen(true)}>+ Propose scope version</button>
+      </div>
+    );
   }
 
   return (
-    <form onSubmit={submit} style={{ borderTop: "1px solid var(--border)", paddingTop: "1rem", marginTop: "0.5rem" }}>
-      <h2 style={{ fontSize: "0.95rem" }}>Propose new scope version</h2>
+    <form onSubmit={submit}>
+      <h2>Propose new scope version</h2>
       <label className="field">Note
         <input value={note} onChange={(e) => setNote(e.target.value)} />
       </label>

@@ -22,32 +22,70 @@ export default async function ProgramsPage() {
 
   return (
     <div>
-      <h1 style={{ fontSize: "1.2rem" }}>Programs & scope management</h1>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <div className="row spread" style={{ marginBottom: "0.4rem" }}>
+        <div>
+          <div className="mono-label">POLICY BOUNDARY // ENGAGEMENT LEDGER</div>
+          <h1 style={{ margin: "0.15rem 0 0" }}>Programs &amp; scope management</h1>
+        </div>
+        <span className="badge accent">{programs.length} REGISTERED PROGRAMS</span>
+      </div>
+      <p className="muted" style={{ marginTop: "0.25rem" }}>
         Programs record the authorization source. No active testing may begin until a policy version is approved, activated and verified.
       </p>
 
       {canWrite && <CreateProgramForm />}
 
+      <div className="section-label">
+        <span className="section-label-num">01</span>
+        <span>AUTHORIZED PROGRAM REGISTRY</span>
+      </div>
+
       <div className="card">
-        <h2>Programs ({programs.length})</h2>
+        <h2>
+          <span>Programs ({programs.length})</span>
+          <span className="mono-label">SEGREGATION OF DUTIES ENFORCED</span>
+        </h2>
         {programs.length === 0 ? (
           <p className="empty">No programs yet — create one above.</p>
         ) : (
           <table className="data">
             <thead>
-              <tr><th>Name</th><th>Provider / handle</th><th>State</th><th>Active policy</th><th>Authorization ref</th></tr>
+              <tr>
+                <th>Name</th>
+                <th>Provider / handle</th>
+                <th>State</th>
+                <th>Active policy</th>
+                <th>Authorization ref</th>
+              </tr>
             </thead>
             <tbody>
               {programs.map((p) => {
                 const active = versions.find((v) => v.programId === p.id && v.status === "ACTIVE");
                 return (
                   <tr key={p.id}>
-                    <td><Link href={`/programs/${p.id}`}><strong>{p.name}</strong></Link></td>
-                    <td className="mono">{p.provider}/{p.handle}</td>
-                    <td><span className={`badge ${p.state === "ACTIVE" ? "ok" : "neutral"}`}>{p.state}</span></td>
-                    <td>{active ? <span className="badge accent">v{active.version}</span> : <span className="badge warn">none</span>}</td>
-                    <td className="mono" style={{ fontSize: "0.75rem" }}>{p.authorizationRef}</td>
+                    <td>
+                      <Link href={`/programs/${p.id}`}>
+                        <strong>{p.name}</strong>
+                      </Link>
+                    </td>
+                    <td className="mono">
+                      {p.provider}/{p.handle}
+                    </td>
+                    <td>
+                      <span className={`badge ${p.state === "ACTIVE" ? "ok" : "neutral"}`}>{p.state}</span>
+                    </td>
+                    <td>
+                      {active ? (
+                        <span className="badge ok">
+                          <span className="signal-dot" style={{ width: 6, height: 6 }} /> v{active.version} ACTIVE
+                        </span>
+                      ) : (
+                        <span className="badge warn">NO ACTIVE POLICY</span>
+                      )}
+                    </td>
+                    <td className="mono" style={{ fontSize: "0.75rem" }}>
+                      {p.authorizationRef}
+                    </td>
                   </tr>
                 );
               })}

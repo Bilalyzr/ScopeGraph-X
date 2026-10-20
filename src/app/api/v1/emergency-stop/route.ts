@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { roleHas } from "@/lib/rbac";
 import { triggerEmergencyStop, liftEmergencyStop } from "@/lib/safety";
 import { ApiError, handleApiError, requireContext, withRequestId } from "@/lib/api";
 
@@ -33,8 +34,15 @@ export async function POST(req: NextRequest) {
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) throw new ApiError(422, "VALIDATION_ERROR", "reason required");
-    if (parsed.data.scope === "PROGRAM" && !parsed.data.program_id) {
-      throw new ApiError(422, "VALIDATION_ERROR", "program_id required for PROGRAM scope");
+    if (parsed.data.scope === "PROGRAM") {
+      if (!parsed.data.program_id) {
+        throw new ApiError(422, "VALIDATION_ERROR", "program_id required for PROGRAM scope");
+      }
+      // Tenant boundary check: ensure target program belongs to caller's org.
+      const program = await db.program.findFirst({
+        where: { id: parsed.data.program_id, orgId: ctx.orgId },
+      });
+      if (!program) throw new ApiError(404, "NOT_FOUND", "Program not found");
     }
     const result = await triggerEmergencyStop({
       scope: parsed.data.scope,
@@ -45,7 +53,8 @@ export async function POST(req: NextRequest) {
     });
     return withRequestId(
       { id: result.stop.id, active: true, campaigns_stopped: result.campaigns, jobs_cancelled: result.cancelledJobs },
-      201, ctx.requestId
+      201,
+      ctx.requestId
     );
   } catch (e) {
     return handleApiError(e, requestId);
@@ -60,7 +69,13 @@ export async function DELETE(req: NextRequest) {
     const url = new URL(req.url);
     const stopId = url.searchParams.get("id");
     if (!stopId) throw new ApiError(422, "VALIDATION_ERROR", "id query parameter required");
-    const stop = await db.emergencyStop.findFirst({ where: { id: stopId, OR: [{ orgId: ctx.orgId }, { scope: "GLOBAL" }] } });
+    const canLiftGlobal = roleHas(ctx.role, "platform:admin");
+    const stop = await db.emergencyStop.findFirst({
+      where: {
+        id: stopId,
+        OR: [{ orgId: ctx.orgId }, ...(canLiftGlobal ? [{ scope: "GLOBAL" }] : [])],
+      },
+    });
     if (!stop) throw new ApiError(404, "NOT_FOUND", "Emergency stop not found");
     await liftEmergencyStop(stopId, ctx.principal.userId);
     return withRequestId({ id: stopId, active: false }, 200, ctx.requestId);

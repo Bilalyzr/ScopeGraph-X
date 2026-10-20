@@ -8,16 +8,11 @@ interface ExternalRow {
   severity: string; correlationStatus: string; correlatedFindingId: string | null;
 }
 
-const SAMPLE = JSON.stringify([
-  { tool: "sast", rule: "sql-injection-spring", locator: "src/main/java/…/OrderRepository.java:88", cwe: "CWE-89", severity: "HIGH", description: "Concatenated SQL in order lookup", asset_locator: "api.demo-target.test" },
-  { tool: "sca", rule: "CVE-2026-12345", locator: "jackson-databind@2.15.0", cwe: "CWE-502", severity: "MEDIUM", description: "Outdated dependency (demo)", asset_locator: "shop.demo-target.test" },
-], null, 2);
-
 export function CorrelationsPanel({ programs, rows }: { programs: Array<{ id: string; name: string }>; rows: ExternalRow[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [programId, setProgramId] = useState(programs[0]?.id ?? "");
-  const [payload, setPayload] = useState(SAMPLE);
+  const [payload, setPayload] = useState("[]");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

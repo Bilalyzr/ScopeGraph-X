@@ -3,10 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function ProposeTestForm({ hypothesisId }: { hypothesisId: string }) {
+export function ProposeTestForm({
+  hypothesisId,
+  hypotheses,
+}: {
+  hypothesisId: string;
+  hypotheses?: Array<{ id: string; category: string; summary: string }>;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ target_host: "api.demo-target.test", target_path: "/v1/orders/ord_1001", method: "GET", identities: "idt_support, idt_billing", oracle_id: "differential-auth-matrix" });
+  const [selectedHypId, setSelectedHypId] = useState(hypothesisId);
+  const [form, setForm] = useState({ target_host: "", target_path: "/", method: "GET", identities: "", oracle_id: "differential-auth-matrix" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -15,7 +22,7 @@ export function ProposeTestForm({ hypothesisId }: { hypothesisId: string }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/v1/hypotheses/${hypothesisId}/tests`, {
+      const res = await fetch(`/api/v1/hypotheses/${selectedHypId}/tests`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -42,6 +49,17 @@ export function ProposeTestForm({ hypothesisId }: { hypothesisId: string }) {
   return (
     <form onSubmit={submit} style={{ borderTop: "1px solid var(--border)", paddingTop: "1rem", marginTop: "1rem" }}>
       <h2 style={{ fontSize: "0.95rem" }}>Propose bounded test plan</h2>
+      {hypotheses && hypotheses.length > 0 && (
+        <label className="field">Target Hypothesis
+          <select value={selectedHypId} onChange={(e) => setSelectedHypId(e.target.value)}>
+            {hypotheses.map((h) => (
+              <option key={h.id} value={h.id}>
+                [{h.category}] {h.summary.slice(0, 72)} ({h.id})
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="form-row">
         <label className="field">Target host
           <input value={form.target_host} onChange={(e) => setForm({ ...form, target_host: e.target.value })} />

@@ -57,7 +57,11 @@ export default function SessionsSection() {
             <tr key={s.id}>
               <td className="mono">{s.id}</td>
               <td>
-                {s.current ? <span className="badge ok">current</span> : null}{" "}
+                {s.current ? (
+                  <span className="badge ok">
+                    <span className="signal-dot" style={{ width: 6, height: 6 }} /> CURRENT SESSION
+                  </span>
+                ) : null}{" "}
                 {s.revoked ? <span className="badge neutral">revoked</span> : <span className="badge info">active</span>}
               </td>
               <td className="faint" style={{ fontSize: "0.75rem" }}>{new Date(s.created_at).toISOString().slice(0, 16).replace("T", " ")}</td>

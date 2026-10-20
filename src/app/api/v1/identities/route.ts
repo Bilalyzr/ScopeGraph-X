@@ -33,6 +33,10 @@ export async function POST(req: NextRequest) {
     requestId = ctx.requestId;
     const parsed = schema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) throw new ApiError(422, "VALIDATION_ERROR", "Invalid identity payload", parsed.error.issues[0]?.message);
+    if (parsed.data.program_id) {
+      const program = await db.program.findFirst({ where: { id: parsed.data.program_id, orgId: ctx.orgId } });
+      if (!program) throw new ApiError(404, "NOT_FOUND", "Program not found in tenant");
+    }
     const identity = await db.identity.create({
       data: {
         id: newId("idt"),

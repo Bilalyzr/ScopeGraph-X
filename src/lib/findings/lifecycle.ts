@@ -80,6 +80,14 @@ export function fingerprintOf(input: { programId: string; category: string; asse
 }
 
 export async function createFinding(input: CreateFindingInput) {
+  if (input.assetId) {
+    const asset = await db.asset.findFirst({
+      where: { id: input.assetId, orgId: input.orgId, programId: input.programId },
+    });
+    if (!asset) {
+      throw new ApiError(422, "INVALID_ASSET_REF", `Asset ${input.assetId} not found in tenant program`);
+    }
+  }
   const fingerprint = fingerprintOf(input);
   const existing = await db.finding.findUnique({
     where: { programId_fingerprint: { programId: input.programId, fingerprint } },

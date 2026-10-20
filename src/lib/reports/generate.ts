@@ -48,7 +48,7 @@ export async function buildReportData(programId: string, orgId: string, actorId:
   const rows: ReportData["findings"] = [];
   for (const f of findings) {
     const links = await db.findingEvidence.findMany({ where: { findingId: f.id } });
-    const asset = f.assetId ? await db.asset.findUnique({ where: { id: f.assetId } }) : null;
+    const asset = f.assetId ? await db.asset.findFirst({ where: { id: f.assetId, orgId } }) : null;
     rows.push({
       id: f.id,
       title: f.title,

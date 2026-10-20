@@ -45,9 +45,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ idA
     const policy = await db.scopeVersion.findUnique({ where: { id: test.policyVersionId } });
     if (!policy || policy.status !== "ACTIVE") throw new ApiError(409, "POLICY_REVOKED", "Bound policy version is not active");
 
+    // Check emergency stop and policy scope before executing approved test.
+    const { emergencyStopActive } = await import("@/lib/policy/gateway");
+    const { parseRules } = await import("@/lib/policy/rules");
+    const { matchScope } = await import("@/lib/policy/matcher");
+    const stopReason = await emergencyStopActive(ctx.orgId, policy.programId);
+    if (stopReason) throw new ApiError(409, "EMERGENCY_STOP_ACTIVE", stopReason);
+
     // --- simulated constrained execution against deterministic fixtures ---
     const { analyzeDifferentialAuthorization } = await import("@/lib/detection/fixtures");
     const plan = JSON.parse(test.planJson) as { target_host: string; oracle_id: string };
+    const scopeCheck = matchScope(parseRules(policy.rulesJson), { host: plan.target_host, path: "/", method: "GET" });
+    if (!scopeCheck.allowed) {
+      throw new ApiError(403, "OUT_OF_SCOPE", scopeCheck.matchedDeny?.reason ?? `Target ${plan.target_host} is not allowed by active policy`);
+    }
     const relevant = analyzeDifferentialAuthorization().filter((c) => c.identity.identityId.startsWith("idt"));
     const outcomeForTarget = relevant.filter((c) => plan.target_host.includes("api.demo-target.test")).slice(0, 1);
 

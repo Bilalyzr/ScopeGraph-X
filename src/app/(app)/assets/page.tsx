@@ -27,13 +27,21 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
 
   return (
     <div>
-      <h1 style={{ fontSize: "1.2rem" }}>Asset inventory</h1>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <div className="row spread" style={{ marginBottom: "0.4rem" }}>
+        <div>
+          <div className="mono-label">SURFACE PROVENANCE // AUTHORIZATION LADDER</div>
+          <h1 style={{ margin: "0.15rem 0 0" }}>Asset inventory</h1>
+        </div>
+        <span className="badge accent">{assets.length} ASSETS IN VIEW</span>
+      </div>
+      <p className="muted" style={{ marginTop: "0.25rem" }}>
         Passive observations with source provenance. An asset never becomes authorized for active testing merely because it appears related to an in-scope asset.
       </p>
 
-      <div className="row" style={{ marginBottom: "0.8rem" }}>
-        <Link href="/assets" className={`badge ${!sp.scope_state ? "accent" : "neutral"}`}>all ({assets.length >= 0 ? "" : ""})</Link>
+      <div className="row" style={{ marginBottom: "0.9rem" }}>
+        <Link href="/assets" className={`badge ${!sp.scope_state ? "accent" : "neutral"}`}>
+          all
+        </Link>
         {states.map((s) => (
           <Link key={s} href={`/assets?scope_state=${s}`} className={`badge ${sp.scope_state === s ? "accent" : "neutral"}`}>
             {s.replace("_", " ")}
@@ -43,31 +51,62 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
 
       {canWrite && <ImportAssetForm programs={programs.map((p) => ({ id: p.id, name: p.name }))} />}
 
+      <div className="section-label">
+        <span className="section-label-num">01</span>
+        <span>CANONICAL ASSET LEDGER</span>
+      </div>
+
       <div className="card">
         {assets.length === 0 ? (
           <p className="empty">No assets match. Run a passive discovery campaign or import one manually.</p>
         ) : (
           <table className="data">
             <thead>
-              <tr><th>Locator</th><th>Type</th><th>Scope state</th><th>Confidence</th><th>Program</th><th>Last seen</th></tr>
+              <tr>
+                <th>Locator</th>
+                <th>Type</th>
+                <th>Scope state</th>
+                <th>Confidence</th>
+                <th>Program</th>
+                <th>Last seen</th>
+              </tr>
             </thead>
             <tbody>
               {assets.map((a) => {
                 const program = programs.find((p) => p.id === a.programId);
                 return (
                   <tr key={a.id}>
-                    <td><Link href={`/assets/${a.id}`} className="mono">{a.canonicalLocator}</Link></td>
-                    <td>{a.assetType}</td>
-                    <td><span className={`badge scope-${a.scopeState}`}>{a.scopeState.replace("_", " ")}</span></td>
-                    <td>{a.confidence.toFixed(2)}</td>
+                    <td>
+                      <Link href={`/assets/${a.id}`} className="mono">
+                        {a.canonicalLocator}
+                      </Link>
+                    </td>
+                    <td className="mono">{a.assetType}</td>
+                    <td>
+                      <span className={`badge scope-${a.scopeState}`}>{a.scopeState.replace("_", " ")}</span>
+                    </td>
+                    <td className="mono">
+                      <span>{a.confidence.toFixed(2)}</span>{" "}
+                      <span style={{ color: "var(--green)", letterSpacing: "1px", fontSize: "0.7rem" }} aria-hidden="true">
+                        {"●".repeat(Math.max(1, Math.round(a.confidence * 4)))}
+                        <span style={{ color: "var(--border)" }}>{"●".repeat(4 - Math.max(1, Math.round(a.confidence * 4)))}</span>
+                      </span>
+                    </td>
                     <td>{program?.name ?? "—"}</td>
-                    <td className="faint" style={{ fontSize: "0.75rem" }}>{a.lastSeenAt.toISOString().slice(0, 16).replace("T", " ")}</td>
+                    <td className="faint" style={{ fontSize: "0.75rem" }}>
+                      {a.lastSeenAt.toISOString().slice(0, 16).replace("T", " ")}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         )}
+      </div>
+
+      <div className="section-label">
+        <span className="section-label-num">02</span>
+        <span>SURFACE DRIFT &amp; CHANGE FEED</span>
       </div>
 
       <ChangeFeed orgId={principal.orgId} />
