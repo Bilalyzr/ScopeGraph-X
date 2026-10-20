@@ -42,7 +42,6 @@ export async function enqueueJob(jr: JobRequest) {
   });
 }
 
-const ACTIVE_KINDS = new Set(["active-probe"]);
 const LEASE_MS = 60_000;
 
 function currentWorkerId(): string {
@@ -95,7 +94,7 @@ export async function extendLease(jobId: string, workerId: string): Promise<bool
   return res.count === 1;
 }
 
-export async function runJob(jobId: string, workerId: string = currentWorkerId()): Promise<void> {
+async function runJob(jobId: string, workerId: string = currentWorkerId()): Promise<void> {
   const job = await db.job.findUnique({ where: { id: jobId } });
   if (!job) return;
   // Inline path (fresh claim): only proceed if QUEUED, or already leased by us.
@@ -251,6 +250,3 @@ async function runAiHypothesisPass(programId: string, orgId: string, jobRef: str
 }
 
 export const jobKinds = ["passive-discovery", "active-probe", "scanner-import", "ai-hypothesis"];
-export function isActiveKind(kind: string): boolean {
-  return ACTIVE_KINDS.has(kind);
-}

@@ -69,14 +69,9 @@ class MockProvider implements AiProvider {
   }
 }
 
-export function getProvider(): AiProvider {
-  return getProviderWithFetch(fetch);
-}
-
-/** Injectable-fetch factory (tests pass a stub; production uses global fetch). */
-export function getProviderWithFetch(fetchFn: typeof fetch): AiProvider {
+function getProvider(): AiProvider {
   if (process.env.AI_PROVIDER === "openai-compatible" && process.env.AI_API_KEY && process.env.AI_BASE_URL) {
-    return new OpenAICompatibleProvider(fetchFn);
+    return new OpenAICompatibleProvider(fetch);
   }
   return new MockProvider(); // default: deterministic, no key, no network
 }

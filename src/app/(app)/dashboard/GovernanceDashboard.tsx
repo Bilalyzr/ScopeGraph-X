@@ -2,12 +2,17 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { verifyAuditChain } from "@/lib/audit";
 import { ticketingMode } from "@/lib/ticketing";
+import { AnalyticsBoard } from "./AnalyticsBoard";
+import { WINDOW_DAYS, type PrdMetrics } from "@/lib/analytics/prd-metrics";
+import "./dashboard.css";
+import "./analytics.css";
+import { SeverityBadge } from "@/components/Badges";
 
 // ADMIN CONSOLE — the governance-family dashboard (TENANT_ADMIN,
 // PLATFORM_OPERATOR, PROGRAM_OWNER, AUDITOR). Everything here answers one
 // question: "what needs my decision, and is the platform healthy?"
 
-export async function GovernanceDashboard({ orgId, orgName, role }: { orgId: string; orgName: string; role: string }) {
+export async function GovernanceDashboard({ orgId, orgName, role, metrics }: { orgId: string; orgName: string; role: string; metrics: PrdMetrics }) {
   const [proposedPolicies, programs, awaitingAuthAssets, reportedFindings, unvalidatedFindings, members, evidenceExpiring, webhooks, tickets, stops, chain, recentAudit] =
     await Promise.all([
       db.scopeVersion.findMany({ where: { status: "PROPOSED", program: { orgId } }, include: { program: true }, orderBy: { createdAt: "asc" } }),
@@ -27,52 +32,57 @@ export async function GovernanceDashboard({ orgId, orgName, role }: { orgId: str
   const approvalsCount = proposedPolicies.length + awaitingAuthAssets.length + reportedFindings.length;
 
   return (
-    <div className="dx">
-      {/* ------------------------------------------------------------- hero */}
-      <section className="dx-section" aria-labelledby="gx-h0">
-        <header className="dx-head">
-          <p className="dx-kicker"><span>00</span> Admin console</p>
-          <h1 id="gx-h0" className="dx-h2" style={{ fontSize: "1.9rem" }}>
-            {orgName} — governance &amp; control
-          </h1>
-          <p className="muted" style={{ margin: "0.4rem 0 0" }}>
-            Signed in as <strong>{role}</strong>. This console is decision-first: approvals that wait on you,
-            platform health, and the audit ledger. Hunting happens in the Finder Workbench.
+    <div className="ax-page dx ax-gov">
+      <header className="ax-top">
+        <div className="ax-top-l">
+          <p className="ax-eyebrow">
+            Admin console <span aria-hidden="true">/</span> <b>{orgName}</b> <span aria-hidden="true">·</span> {role}
           </p>
-        </header>
-        <div className="dx-plates">
-          <Link href="/programs" className={`dx-plate ${approvalsCount > 0 ? "alert" : ""}`}>
-            <span className="dx-plate-label">Awaiting decisions</span>
-            <span className="dx-plate-n">{approvalsCount}</span>
-            <span className="dx-plate-sub">{proposedPolicies.length} policies · {awaitingAuthAssets.length} assets · {reportedFindings.length} findings</span>
-          </Link>
-          <Link href="/findings" className="dx-plate">
-            <span className="dx-plate-label">Unvalidated findings</span>
-            <span className="dx-plate-n">{unvalidatedFindings}</span>
-            <span className="dx-plate-sub">need an independent validator</span>
-          </Link>
-          <Link href="/admin" className="dx-plate">
-            <span className="dx-plate-label">Members</span>
-            <span className="dx-plate-n">{members}</span>
-            <span className="dx-plate-sub">active operators in this org</span>
-          </Link>
-          <Link href="/admin" className={`dx-plate ${evidenceExpiring > 0 ? "alert" : ""}`}>
-            <span className="dx-plate-label">Evidence expiring</span>
-            <span className="dx-plate-n">{evidenceExpiring}</span>
-            <span className="dx-plate-sub">within 7 days (retention)</span>
-          </Link>
-          <Link href="/audit" className={`dx-plate ${chain.ok ? "" : "alert"}`}>
-            <span className="dx-plate-label">Audit chain</span>
-            <span className="dx-plate-n" style={{ fontSize: "1.15rem" }}>{chain.ok ? "VERIFIED" : "BROKEN"}</span>
-            <span className="dx-plate-sub">tamper-evident digests</span>
-          </Link>
-          <div className={`dx-plate ${stops ? "alert" : ""}`}>
-            <span className="dx-plate-label">Emergency stop</span>
-            <span className="dx-plate-n" style={{ fontSize: "1.15rem" }}>{stops ? "ENGAGED" : "CLEAR"}</span>
-            <span className="dx-plate-sub">{stops ? "all active ops blocked" : "dispatch permitted under policy"}</span>
-          </div>
+          <h1 className="ax-title">Governance &amp; platform overview</h1>
+        </div>
+        <div className="ax-top-r">
+          <span className="ax-pill">Last {WINDOW_DAYS} days · UTC</span>
+          <span className={`ax-pill ${stops ? "halted" : ""}`} role="status">
+            <span className="dot" /> {stops ? "Emergency stop engaged" : "Gateway live"}
+          </span>
+        </div>
+      </header>
+
+      {/* ------------------------------------------------------------- decisions */}
+      <section className="ax-kpis" aria-label="Decisions and control state">
+        <Link href="/programs" className={`ax-kpi ${approvalsCount > 0 ? "alert" : ""}`}>
+          <span className="ax-kpi-l">Awaiting decisions</span>
+          <b className="ax-kpi-v">{approvalsCount}</b>
+          <span className="ax-kpi-s">{proposedPolicies.length} policies · {awaitingAuthAssets.length} assets · {reportedFindings.length} findings</span>
+        </Link>
+        <Link href="/findings" className="ax-kpi">
+          <span className="ax-kpi-l">Unvalidated findings</span>
+          <b className="ax-kpi-v">{unvalidatedFindings}</b>
+          <span className="ax-kpi-s">need an independent validator</span>
+        </Link>
+        <Link href="/admin" className="ax-kpi">
+          <span className="ax-kpi-l">Members</span>
+          <b className="ax-kpi-v">{members}</b>
+          <span className="ax-kpi-s">active operators in this org</span>
+        </Link>
+        <Link href="/admin" className={`ax-kpi ${evidenceExpiring > 0 ? "alert" : ""}`}>
+          <span className="ax-kpi-l">Evidence expiring</span>
+          <b className="ax-kpi-v">{evidenceExpiring}</b>
+          <span className="ax-kpi-s">within 7 days (retention)</span>
+        </Link>
+        <Link href="/audit" className={`ax-kpi ${chain.ok ? "" : "alert"}`}>
+          <span className="ax-kpi-l">Audit chain</span>
+          <b className="ax-kpi-v" style={{ fontSize: "1.35rem", color: chain.ok ? "var(--green)" : "var(--red)" }}>{chain.ok ? "VERIFIED" : "BROKEN"}</b>
+          <span className="ax-kpi-s">tamper-evident digests</span>
+        </Link>
+        <div className={`ax-kpi ${stops ? "alert" : ""}`}>
+          <span className="ax-kpi-l">Emergency stop</span>
+          <b className="ax-kpi-v" style={{ fontSize: "1.35rem", color: stops ? "var(--red)" : "var(--green)" }}>{stops ? "ENGAGED" : "CLEAR"}</b>
+          <span className="ax-kpi-s">{stops ? "all active ops blocked" : "dispatch permitted under policy"}</span>
         </div>
       </section>
+
+      <AnalyticsBoard m={metrics} />
 
       {/* ------------------------------------------------------------- 01 approvals */}
       <section className="dx-section" aria-labelledby="gx-h1">
@@ -134,7 +144,7 @@ export async function GovernanceDashboard({ orgId, orgName, role }: { orgId: str
                     <li key={f.id}>
                       <span className={`dot ${f.severity === "CRITICAL" || f.severity === "HIGH" ? "bad" : "busy"}`} />
                       <span className="k"><Link href={`/findings/${f.id}`}>{f.title.slice(0, 48)}</Link></span>
-                      <span className="v">{f.severity}</span>
+                      <span className="v"><SeverityBadge severity={f.severity} /></span>
                     </li>
                   ))}
                 </ul>

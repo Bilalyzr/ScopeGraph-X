@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentPrincipal } from "@/lib/auth/session";
-import { OrgSwitcher } from "@/components/OrgSwitcher";
+import { OrgPicker } from "@/components/OrgPicker";
 import { EmergencyStopButton } from "@/components/EmergencyStopButton";
 import { roleFamily } from "@/lib/rbac";
 import LogoutButton from "@/components/LogoutButton";
@@ -182,7 +182,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               gap: "0.5rem",
             }}
           >
-            <OrgSwitcher orgs={orgs} activeOrgId={principal.orgId} />
+            <OrgPicker orgs={orgs} activeOrgId={principal.orgId} variant="select" />
             <span className="badge neutral" title="Authenticated operator" style={{ background: "var(--surface)" }}>
               {principal.email}
             </span>

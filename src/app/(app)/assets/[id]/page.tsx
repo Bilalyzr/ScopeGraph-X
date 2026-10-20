@@ -5,6 +5,7 @@ import { currentPrincipal } from "@/lib/auth/session";
 import { roleHas } from "@/lib/rbac";
 import { ApiAction } from "@/components/ApiAction";
 import { BackLink } from "@/components/BackLink";
+import { ChangeList } from "@/components/ChangeList";
 
 export const dynamic = "force-dynamic";
 
@@ -141,30 +142,7 @@ export default async function AssetDetailPage({ params }: { params: Promise<{ id
               No changes recorded. “Capture snapshot / diff” stores the current surface; later captures diff against it.
             </p>
           ) : (
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Change</th>
-                  <th>Before → After</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assetChanges.map((c) => (
-                  <tr key={c.id}>
-                    <td className="faint" style={{ fontSize: "0.72rem" }}>
-                      {c.observedAt.toISOString().slice(0, 16).replace("T", " ")}
-                    </td>
-                    <td>
-                      <span className="badge info">{c.diffKind.replace("_", " ")}</span>
-                    </td>
-                    <td className="mono" style={{ fontSize: "0.72rem" }}>
-                      <span className="faint">{c.beforeJson}</span> → <strong>{c.afterJson}</strong>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ChangeList changes={assetChanges} />
           )}
           <h3 className="mono-label" style={{ margin: "1.2rem 0 0.5rem" }}>
             Observation history

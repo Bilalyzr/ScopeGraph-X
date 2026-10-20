@@ -120,16 +120,3 @@ export async function handleApiError(e: unknown, requestId: string): Promise<Res
   return problem(500, "INTERNAL", "Internal server error", "An unexpected error occurred.");
 }
 
-/** Tenant guard: loads a record and verifies it belongs to the caller's org. */
-export async function tenantScoped<T extends { orgId?: string | null }>(
-  loader: () => Promise<T | null>,
-  orgId: string
-): Promise<T> {
-  const record = await loader();
-  if (!record) throw new ApiError(404, "NOT_FOUND", "Resource not found");
-  // PLATFORM_OPERATOR may read cross-tenant for operations; everyone else is isolated.
-  if (record.orgId !== orgId) {
-    throw new ApiError(404, "NOT_FOUND", "Resource not found"); // 404, not 403: no existence leak
-  }
-  return record;
-}

@@ -9,7 +9,7 @@ export interface TestIdentity {
   tenantLabel: string;
 }
 
-export const TEST_IDENTITIES: TestIdentity[] = [
+const TEST_IDENTITIES: TestIdentity[] = [
   { identityId: "idt_support", roleLabel: "support-agent", tenantLabel: "tenant-a" },
   { identityId: "idt_billing", roleLabel: "billing-admin", tenantLabel: "tenant-a" },
 ];
@@ -31,7 +31,7 @@ export interface FixtureResource {
  * Also includes a NEGATIVE control: an endpoint where 200 is EXPECTED — the
  * analyzer must NOT report it (guards against "200 = vulnerable" logic).
  */
-export const FIXTURES: FixtureResource[] = [
+const FIXTURES: FixtureResource[] = [
   {
     objectType: "order",
     resourceId: "ord_1001",

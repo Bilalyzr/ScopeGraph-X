@@ -14,7 +14,7 @@ export interface Principal {
   role: string | null;
 }
 
-export function hashToken(token: string): string {
+function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
@@ -26,7 +26,7 @@ export async function createSession(userId: string, orgId: string | null): Promi
   return token;
 }
 
-export async function resolveSession(token: string | undefined): Promise<Principal | null> {
+async function resolveSession(token: string | undefined): Promise<Principal | null> {
   if (!token) return null;
   const id = `ses_${hashToken(token)}`;
   const session = await db.session.findUnique({ where: { id } });
@@ -65,4 +65,3 @@ export async function switchOrg(sessionToken: string, userId: string, orgId: str
   await db.session.update({ where: { id: `ses_${hashToken(sessionToken)}` }, data: { orgId } });
 }
 
-export { newId };

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentPrincipal } from "@/lib/auth/session";
 import { roleHas } from "@/lib/rbac";
+import { SeverityBadge, FindingStatusBadge } from "@/components/Badges";
 
 export const dynamic = "force-dynamic";
 
@@ -99,25 +100,13 @@ export default async function FindingsPage({ searchParams }: { searchParams: Pro
                     </div>
                   </td>
                   <td>
-                    <span className={`badge sev-${f.severity}`}>{f.severity}</span>
+                    <SeverityBadge severity={f.severity} />
                   </td>
                   <td className="mono" style={{ fontSize: "0.75rem" }}>
                     {f.category}
                   </td>
                   <td>
-                    <span
-                      className={`badge ${
-                        ["CLOSED", "ACCEPTED"].includes(f.status)
-                          ? "ok"
-                          : f.status === "REPORTED"
-                            ? "accent"
-                            : ["REJECTED", "FALSE_POSITIVE", "DUPLICATE"].includes(f.status)
-                              ? "neutral"
-                              : "info"
-                      }`}
-                    >
-                      {f.status.replace("_", " ")}
-                    </span>
+                    <FindingStatusBadge status={f.status} />
                   </td>
                   <td>
                     <span

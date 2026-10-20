@@ -22,31 +22,6 @@ export interface WebhookTransport {
   deliver(url: string, body: string, headers: Record<string, string>): Promise<{ ok: boolean; response: string }>;
 }
 
-export function validateWebhookUrl(rawUrl: string): URL {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new ApiError(422, "INVALID_WEBHOOK_URL", "Invalid webhook URL");
-  }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new ApiError(422, "INVALID_WEBHOOK_URL", "Webhook URL must use http or https");
-  }
-  const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (
-    !isValidHostname(host) ||
-    host === "localhost" ||
-    host.endsWith(".localhost") ||
-    host.endsWith(".local") ||
-    host.endsWith(".internal")
-  ) {
-    throw new ApiError(422, "INVALID_WEBHOOK_URL", "Webhook destination host is not permitted");
-  }
-  if (isIP(host) !== 0 && isBlockedAddress(host)) {
-    throw new ApiError(422, "INVALID_WEBHOOK_URL", "Webhook destination IP is in a blocked range");
-  }
-  return parsed;
-}
 
 /** Default dev transport: records the delivery, performs no network I/O. */
 class RecordedTransport implements WebhookTransport {
@@ -77,9 +52,31 @@ class HttpTransport implements WebhookTransport {
   }
 }
 
+
+/** SSRF guard: webhook endpoints are operator-configured, but still refuse
+ * private/loopback/resolved-risk destinations and non-https in production. */
+function validateWebhookUrl(rawUrl: string): void {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error("INVALID_WEBHOOK_URL");
+  }
+  if (url.protocol !== "https:" && process.env.NODE_ENV === "production") {
+    throw new Error("WEBHOOK_HTTPS_REQUIRED");
+  }
+  const host = url.hostname.toLowerCase();
+  if (
+    host === "localhost" || host.endsWith(".local") || host === "0.0.0.0" ||
+    /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)
+  ) {
+    throw new Error("WEBHOOK_PRIVATE_DESTINATION_FORBIDDEN");
+  }
+}
+
 const recordedTransport = new RecordedTransport();
 
-export function getWebhookTransport(): WebhookTransport & { deliveries?: unknown[]; failNext?: number } {
+function getWebhookTransport(): WebhookTransport & { deliveries?: unknown[]; failNext?: number } {
   if (process.env.WEBHOOK_TRANSPORT === "http") return new HttpTransport();
   return recordedTransport;
 }

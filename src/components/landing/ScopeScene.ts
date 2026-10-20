@@ -44,7 +44,7 @@ const clamp = (v: number, a = 0, b = 1) => (v < a ? a : v > b ? b : v);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 /** Keyframes are reached at the vertical middle of each chapter (s = i + 0.5). */
-export function sampleFrame(s: number): Frame {
+function sampleFrame(s: number): Frame {
   const x = Math.max(0, s - 0.5);
   const i = Math.min(LAST, Math.floor(x));
   const j = Math.min(LAST, i + 1);

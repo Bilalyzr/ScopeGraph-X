@@ -31,7 +31,7 @@ async function callActivate(svId: string): Promise<Response> {
     headers: { "content-type": "application/json", cookie: holders.cookie ?? "" },
     body: "{}",
   });
-  return activateAction(req, { params: Promise.resolve({ idAction: `${svId}:activate` }) });
+  return activateAction(req as never, { params: Promise.resolve({ idAction: `${svId}:activate` }) });
 }
 
 async function seedSoloOrg(version = 1) {

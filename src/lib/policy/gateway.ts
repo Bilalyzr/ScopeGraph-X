@@ -213,7 +213,7 @@ export async function revalidateConnection(host: string, authorizedIp: string): 
   return { decision: "ALLOW", reason: "Address stable", resolvedIp: authorizedIp, simulated: true };
 }
 
-export function hostKey(host: string): string {
+function hostKey(host: string): string {
   return host.trim().toLowerCase();
 }
 

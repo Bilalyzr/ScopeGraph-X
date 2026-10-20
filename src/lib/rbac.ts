@@ -13,7 +13,7 @@ export const ROLES = [
 
 export type Role = (typeof ROLES)[number];
 
-export const PERMISSIONS = [
+const PERMISSIONS = [
   "org:read",
   "org:admin",
   "program:read",

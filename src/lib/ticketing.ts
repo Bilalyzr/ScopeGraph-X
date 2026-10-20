@@ -23,7 +23,7 @@ export function ticketingMode(): TicketingMode {
 
 type FetchLike = typeof fetch;
 
-export function getTicketingFetch(): FetchLike | null {
+function getTicketingFetch(): FetchLike | null {
   return fetch; // swap point for tests
 }
 

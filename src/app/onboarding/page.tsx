@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentPrincipal } from "@/lib/auth/session";
 import { CreateOrgForm } from "./CreateOrgForm";
-import { PickOrgForm } from "./PickOrgForm";
+import { OrgPicker } from "@/components/OrgPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +55,7 @@ export default async function OnboardingPage() {
             ? "Pick one of your organizations to continue, or create a new one."
             : "You are not a member of any organization yet — create one to start working. You will become its tenant administrator."}
         </p>
-        {orgs.length > 0 && <PickOrgForm orgs={orgs} />}
+        {orgs.length > 0 && <OrgPicker orgs={orgs} activeOrgId={null} variant="buttons" label="Your organizations" />}
         <div
           style={{
             borderTop: orgs.length ? "1px solid var(--border-ink)" : "none",

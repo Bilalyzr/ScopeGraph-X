@@ -3,7 +3,7 @@ import { z } from "zod";
 // Strict typed schema for AI outputs (FR-AI-01): 100% of model suggestions
 // are schema-validated before anything downstream can read them.
 
-export const hypothesisSchema = z.object({
+const hypothesisSchema = z.object({
   category: z.enum([
     "BOLA", "BFLA", "AUTHENTICATION", "SESSION", "MISCONFIGURATION",
     "API_DRIFT", "WORKFLOW_VIOLATION", "SCHEMA_CORRELATION", "OTHER",
