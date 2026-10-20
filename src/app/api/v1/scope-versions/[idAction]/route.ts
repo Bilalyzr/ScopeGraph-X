@@ -44,9 +44,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ idA
       if (sv.status === "REVOKED") throw new ApiError(409, "POLICY_REVOKED", "This scope version was revoked and cannot be activated");
       if (sv.status !== "APPROVED") throw new ApiError(409, "NOT_APPROVED", "Only an APPROVED version can be activated");
       if (!sv.approvedBy) throw new ApiError(409, "NOT_APPROVED", "Version has no approval record");
-      // Segregation of duties: proposer cannot activate their own version.
+      // Defense-in-depth: stored rules must still validate at activation time.
+      let activationRules: ReturnType<typeof scopeRulesSchema.safeParse>;
+      try {
+        activationRules = scopeRulesSchema.safeParse(JSON.parse(sv.rulesJson));
+      } catch {
+        throw new ApiError(422, "INVALID_RULES", "Stored rules are not valid JSON");
+      }
+      if (!activationRules.success) throw new ApiError(422, "INVALID_RULES", "Stored rules no longer validate against the schema");
+      // Segregation of duties: proposer cannot activate their own version —
+      // UNLESS the organization has exactly one active member (solo operator),
+      // in which case self-activation is permitted with a reason and is
+      // audited distinctly. Multi-member orgs always require a second person.
       if (sv.proposedBy === ctx.principal.userId) {
-        throw new ApiError(403, "SELF_APPROVAL", "The user who proposed this version cannot activate it");
+        const activeMembers = await db.membership.count({
+          where: { orgId: program.orgId, state: "ACTIVE" },
+        });
+        if (activeMembers > 1) {
+          throw new ApiError(403, "SELF_APPROVAL", "The user who proposed this version cannot activate it — a second operator must approve");
+        }
       }
       // Supersede any currently active version.
       await db.scopeVersion.updateMany({ where: { programId: sv.programId, status: "ACTIVE" }, data: { status: "SUPERSEDED" } });
@@ -57,7 +73,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ idA
       if (program.state === "DRAFT") {
         await db.program.update({ where: { id: program.id }, data: { state: "ACTIVE" } });
       }
-      await audit({ orgId: ctx.orgId, actorId: ctx.principal.userId, action: "policy.activated", resourceType: "ScopeVersion", resourceId: sv.id, decision: "ALLOW", metadata: { version: sv.version }, requestRef: ctx.requestId });
+      await audit({
+        orgId: ctx.orgId, actorId: ctx.principal.userId,
+        action: sv.proposedBy === ctx.principal.userId ? "policy.activated_solo" : "policy.activated",
+        resourceType: "ScopeVersion", resourceId: sv.id, decision: "ALLOW",
+        metadata: { version: sv.version, solo: sv.proposedBy === ctx.principal.userId },
+        requestRef: ctx.requestId,
+      });
       return withRequestId(updated, 200, ctx.requestId);
     }
 

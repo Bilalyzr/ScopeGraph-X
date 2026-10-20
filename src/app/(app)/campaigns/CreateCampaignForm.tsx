@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 export function CreateCampaignForm({
@@ -22,13 +23,16 @@ export function CreateCampaignForm({
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [needsPolicy, setNeedsPolicy] = useState(false);
 
   const activePolicy = policies.find((p) => p.programId === form.program_id);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!activePolicy) {
-      setError("Selected program has no ACTIVE policy version — activate one first.");
+      setError("");
+      setNeedsPolicy(true);
+      return;
       return;
     }
     setBusy(true);
@@ -73,7 +77,7 @@ export function CreateCampaignForm({
           <input required minLength={3} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Q4 passive sweep" />
         </label>
         <label className="field">Program (active policy pinned automatically)
-          <select value={form.program_id} onChange={(e) => setForm({ ...form, program_id: e.target.value })}>
+          <select value={form.program_id} onChange={(e) => { setForm({ ...form, program_id: e.target.value }); setNeedsPolicy(false); setError(null); }}>
             {programs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </label>
@@ -103,7 +107,20 @@ export function CreateCampaignForm({
           </div>
         </div>
       </div>
-      {!activePolicy && <div className="msg error">This program has no ACTIVE policy version.</div>}
+      {!activePolicy && (
+        <div className="msg error" role="alert">
+          <strong>This program has no ACTIVE policy version yet</strong> — campaigns can never run without one (that is
+          the platform&apos;s core safety gate). Fix it in three steps on the program page:
+          <ol style={{ margin: "0.4rem 0 0.2rem 1.1rem" }}>
+            <li><strong>Propose scope version</strong> (the builder prefills sane allow/deny rules)</li>
+            <li><strong>Approve</strong> the proposed version</li>
+            <li><strong>Activate</strong> it {needsPolicy ? "" : ""}(a different operator in multi-member orgs; solo orgs may self-activate)</li>
+          </ol>
+          <Link className="btn small primary" style={{ marginTop: "0.4rem" }} href={`/programs/${form.program_id}`}>
+            Open program &amp; set up scope policy →
+          </Link>
+        </div>
+      )}
       {error && <div className="msg error" role="alert">{error}</div>}
       <div className="row">
         <button className="btn primary" disabled={busy}>{busy ? "Creating…" : "Create campaign (draft)"}</button>
